@@ -9,40 +9,39 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.ComponentModel.DataAnnotations;
 
 namespace PatientTrackerWPF
 {
     public partial class MainWindow : Window
     {
         private string filterId = "";
-        private Dictionary<string, List<ScoreEntry>> patientData = new();
+        private Dictionary<string, List<ScoreEntry>> patientData = new Dictionary<string, List<ScoreEntry>>();
 
         public class ScoreEntry
         {
-            public string PatientId { get; set; }
+            [Key]
+            public int Id { get; set; }
+
+            [Required]
+            public string PatientId { get; set; } = string.Empty;
+
             public int PHQ9 { get; set; }
             public int GAD7 { get; set; }
             public int PCL5 { get; set; }
             public int BDI2 { get; set; }
-            public int PCL5Total { get; set; }
             public int YBOCS { get; set; }
-            //I will add a new field for notes
-            //or comments if needed
-            public string Note { get; set; }
-            //I will add date field
+            public string Note { get; set; } = string.Empty;
             public DateTime Date { get; set; }
-
-
-
         }
 
         public SeriesCollection ScoreSeriesCollection { get; set; }
-        public ChartValues<int> Phq9Values { get; set; } = new();
-        public ChartValues<int> Gad7Values { get; set; } = new();
-        public ChartValues<int> Bdi2Values { get; set; } = new();
-        public ChartValues<int> Pcl5Values { get; set; } = new();
-        public ChartValues<int> YbocsValues { get; set; } = new();
-        public List<string> TimeLabels { get; set; } = new();
+        public ChartValues<int> Phq9Values { get; set; } = new ChartValues<int>();
+        public ChartValues<int> Gad7Values { get; set; } = new ChartValues<int>();
+        public ChartValues<int> Bdi2Values { get; set; } = new ChartValues<int>();
+        public ChartValues<int> Pcl5Values { get; set; } = new ChartValues<int>();
+        public ChartValues<int> YbocsValues { get; set; } = new ChartValues<int>();
+        public List<string> TimeLabels { get; set; } = new List<string>();
 
         public MainWindow()
         {
@@ -50,11 +49,56 @@ namespace PatientTrackerWPF
 
             ScoreSeriesCollection = new SeriesCollection
             {
-                new LineSeries { Title = "PHQ-9", Values = Phq9Values, PointGeometrySize = 10 },
-                new LineSeries { Title = "GAD-7", Values = Gad7Values, PointGeometrySize = 10 },
-                new LineSeries { Title = "BDI-II", Values = Bdi2Values, PointGeometrySize = 10 },
-                new LineSeries { Title = "PCL-5", Values = Pcl5Values, PointGeometrySize = 10 },
-                new LineSeries { Title = "Y-BOCS", Values = YbocsValues, PointGeometrySize = 10 }
+                new LineSeries
+                {
+                    Title = "PHQ-9",
+                    Values = Phq9Values,
+                    LineSmoothness = 0,
+                    StrokeThickness = 3,
+                    Stroke = Brushes.MediumBlue,
+                    Fill = Brushes.Transparent,
+                    PointGeometrySize = 8
+                },
+                new LineSeries
+                {
+                    Title = "GAD-7",
+                    Values = Gad7Values,
+                    LineSmoothness = 0,
+                    StrokeThickness = 3,
+                    Stroke = Brushes.ForestGreen,
+                    Fill = Brushes.Transparent,
+                    PointGeometrySize = 8
+                },
+                new LineSeries
+                {
+                    Title = "BDI-II",
+                    Values = Bdi2Values,
+                    LineSmoothness = 0,
+                    StrokeThickness = 3,
+                    Stroke = Brushes.OrangeRed,
+                    Fill = Brushes.Transparent,
+                    PointGeometrySize = 8
+                },
+                new LineSeries
+                {
+                    Title = "PCL-5",
+                    Values = Pcl5Values,
+                    LineSmoothness = 0,
+                    StrokeThickness = 3,
+                    Stroke = Brushes.DarkCyan,
+                    Fill = Brushes.Transparent,
+                    PointGeometrySize = 8
+                },
+                new LineSeries
+                {
+                    Title = "Y-BOCS",
+                    Values = YbocsValues,
+                    LineSmoothness = 0,
+                    StrokeThickness = 3,
+                    Stroke = Brushes.Purple,
+                    Fill = Brushes.Transparent,
+                    PointGeometrySize = 8
+                }
             };
 
             ScoresGrid.ItemsSource = new List<ScoreEntry>();
@@ -63,7 +107,7 @@ namespace PatientTrackerWPF
 
         private void AddScore_Click(object sender, RoutedEventArgs e)
         {
-            string patientId = PatientIdBox.Text.Trim(); // ✅ Get from input box
+            string patientId = PatientIdBox.Text.Trim();
 
             if (string.IsNullOrWhiteSpace(patientId))
             {
@@ -71,16 +115,7 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            // Optional: warn if all score fields are blank
-            if (string.IsNullOrWhiteSpace(Phq9Box.Text) &&
-                string.IsNullOrWhiteSpace(Gad7Box.Text) &&
-                string.IsNullOrWhiteSpace(Bdi2Box.Text) &&
-                string.IsNullOrWhiteSpace(PCL5Total.Text) &&
-                string.IsNullOrWhiteSpace(YBOCS.Text))
-            {
-                MessageBox.Show("Please enter at least one score.");
-                return;
-            }
+            // Allow entry of notes only - no validation required for scores
 
             // Add to dictionary if new
             if (!patientData.ContainsKey(patientId))
@@ -102,10 +137,8 @@ namespace PatientTrackerWPF
                 BDI2 = TryParseOrDefault(Bdi2Box.Text),
                 PCL5 = TryParseOrDefault(PCL5Total.Text),
                 YBOCS = TryParseOrDefault(YBOCS.Text),
-                Note = NoteBox.Text.Trim(),
-                // Fix: Use the correct instance of DatePicker
-                Date = (DatePicker?.SelectedDate ?? DateTime.Today).Date + DateTime.Now.TimeOfDay
-
+                Note = NoteBox.Text?.Trim() ?? string.Empty,
+                Date = DatePicker.SelectedDate ?? DateTime.Today
             };
 
             patientData[patientId].Add(entry);
@@ -120,6 +153,7 @@ namespace PatientTrackerWPF
             YBOCS.Clear();
             PatientIdBox.Clear();
             NoteBox.Clear();
+            DatePicker.SelectedDate = DateTime.Today;
 
             // Refresh grid properly
             ScoresGrid.ItemsSource = null;
@@ -130,23 +164,18 @@ namespace PatientTrackerWPF
         // Helper
         private int TryParseOrDefault(string text)
         {
-            return int.TryParse(text, out int value) ? value : -1; // Use -1 to represent missing
+            return int.TryParse(text, out int value) ? value : 0; // Use 0 for missing values
         }
-
 
         private void UpdateChartForPatient(string patientId)
         {
             if (!patientData.ContainsKey(patientId)) return;
 
-            var scores = patientData[patientId];
+            var scores = patientData[patientId].OrderBy(s => s.Date).ToList();
 
-            // 1. Update the grid
             ScoresGrid.ItemsSource = null;
             ScoresGrid.ItemsSource = scores;
-            progressChart.AxisX[0].Labels = TimeLabels;
 
-
-            // 2. Clear old values
             Phq9Values.Clear();
             Gad7Values.Clear();
             Bdi2Values.Clear();
@@ -154,20 +183,46 @@ namespace PatientTrackerWPF
             YbocsValues.Clear();
             TimeLabels.Clear();
 
-            // 3. Add new values and labels
             foreach (var s in scores)
             {
+                // Add all values including zeros for consistent chart display
                 Phq9Values.Add(s.PHQ9);
                 Gad7Values.Add(s.GAD7);
                 Bdi2Values.Add(s.BDI2);
                 Pcl5Values.Add(s.PCL5);
                 YbocsValues.Add(s.YBOCS);
-                TimeLabels.Add(s.Date.ToString("MM/dd")); // Or use .ToShortDateString()
+
+                TimeLabels.Add(s.Date.ToString("dd-MMM"));
             }
 
-            progressChart.AxisX[0].Labels = TimeLabels;
-        }
+            // Clear and set X-axis
+            PatientProgressChart.AxisX.Clear();
+            PatientProgressChart.AxisX.Add(new LiveCharts.Wpf.Axis
+            {
+                Title = "Date",
+                Labels = TimeLabels,
+                LabelsRotation = 45,
+                Separator = new LiveCharts.Wpf.Separator
+                {
+                    Step = 1,
+                    IsEnabled = true
+                }
+            });
 
+            // Set Y-axis for better visualization - increased max to accommodate higher scores
+            PatientProgressChart.AxisY.Clear();
+            PatientProgressChart.AxisY.Add(new LiveCharts.Wpf.Axis
+            {
+                Title = "Score",
+                MinValue = 0,
+                MaxValue = 80, // Increased from 35 to 80 to accommodate higher scores
+                Separator = new LiveCharts.Wpf.Separator
+                {
+                    Step = 10, // Increased step size for better readability
+                    IsEnabled = true
+                }
+            });
+        }
 
         private void ExportToPng_Click(object sender, RoutedEventArgs e)
         {
@@ -184,55 +239,47 @@ namespace PatientTrackerWPF
             ExportScoreGrid.ItemsSource = null;
             ExportScoreGrid.ItemsSource = patientData[patientId];
 
-            // Fill notes (or default message)
-            ExportNoteText.Text = string.Join("\n\n", patientData[patientId]
+            // Fill notes with better formatting - limit length to prevent excessive height
+            var notesText = string.Join("\n\n", patientData[patientId]
                 .Where(p => !string.IsNullOrWhiteSpace(p.Note))
-                .Select(p => $"{p.Date:g}: {p.Note}"));
-            if (string.IsNullOrWhiteSpace(ExportNoteText.Text))
-                ExportNoteText.Text = "No treatment notes available.";
+                .Select(p => $"{p.Date:MMM dd}: {p.Note}")
+                .Take(10)); // Limit to 10 most recent notes to control height
 
-            // Step 2: Capture chart image into ExportChartImage
-            // Render a larger version of the chart to fill full width
-            double exportChartWidth = 2000;
-            double exportChartHeight = 300;
+            ExportNoteText.Text = string.IsNullOrWhiteSpace(notesText) ?
+                "No treatment notes available." : notesText;
 
-            progressChart.Measure(new Size(exportChartWidth, exportChartHeight));
-            progressChart.Arrange(new Rect(0, 0, exportChartWidth, exportChartHeight));
-            progressChart.UpdateLayout();
+            // Step 2: Capture chart image with smaller dimensions
+            double exportChartWidth = 1500;
+            double exportChartHeight = 250;
+
+            PatientProgressChart.Measure(new Size(exportChartWidth, exportChartHeight));
+            PatientProgressChart.Arrange(new Rect(0, 0, exportChartWidth, exportChartHeight));
+            PatientProgressChart.UpdateLayout();
 
             var chartBmp = new RenderTargetBitmap(
                 (int)exportChartWidth,
                 (int)exportChartHeight,
                 96, 96, PixelFormats.Pbgra32);
 
-            chartBmp.Render(progressChart);
+            chartBmp.Render(PatientProgressChart);
             ExportChartImage.Source = chartBmp;
 
-            // Step 3: Prepare ExportLayout
+            // Step 3: Prepare ExportLayout with fixed dimensions
             ExportLayout.Visibility = Visibility.Visible;
-            ExportLayout.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            ExportLayout.Arrange(new Rect(0, 0, ExportLayout.DesiredSize.Width, ExportLayout.DesiredSize.Height));
+
+            // Force specific size for consistent export
+            ExportLayout.Width = 1600;
+            ExportLayout.Height = 1200;
+
+            ExportLayout.Measure(new Size(1600, 1200));
+            ExportLayout.Arrange(new Rect(0, 0, 1600, 1200));
             ExportLayout.UpdateLayout();
 
             // Let the UI finish layout rendering
-            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+            Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
 
-            int width = (int)Math.Ceiling(ExportLayout.ActualWidth);
-            int height = (int)Math.Ceiling(ExportLayout.ActualHeight);
-
-            // Fallback if values are too small
-            if (width < 1000) width = 2200;
-            if (height < 500) height = 1600;
-
-
-            if (width == 0 || height == 0)
-            {
-                MessageBox.Show("Export area has zero width or height.");
-                return;
-            }
-
-            // Step 4: Render and Save PNG
-            var renderBmp = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            // Step 4: Render and Save PNG with fixed dimensions
+            var renderBmp = new RenderTargetBitmap(1600, 1200, 96, 96, PixelFormats.Pbgra32);
             renderBmp.Render(ExportLayout);
 
             var png = new PngBitmapEncoder();
@@ -245,24 +292,8 @@ namespace PatientTrackerWPF
             }
 
             ExportLayout.Visibility = Visibility.Collapsed;
-            MessageBox.Show($"Exported to {fileName}", "Success");
+            MessageBox.Show($"Exported to {fileName}\nSize: 1600x1200 pixels", "Success");
         }
-
-
-
-        //    // Save to PNG
-        //    var png = new PngBitmapEncoder();
-        //    png.Frames.Add(BitmapFrame.Create(renderBmp));
-        //    var fileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-
-        //    using (var stream = new FileStream(fileName, FileMode.Create))
-        //    {
-        //        png.Save(stream);
-        //    }
-
-        //    MessageBox.Show($"Exported to {fileName}", "Success");
-        //}
-
 
         private void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -276,17 +307,23 @@ namespace PatientTrackerWPF
         private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             filterId = FilterBox.Text.Trim();
-            ScoresGrid.ItemsSource = patientData
+            var filteredData = patientData
                 .SelectMany(kvp => kvp.Value)
-                .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId))
+                .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.PatientId)
+                .ThenBy(s => s.Date)
                 .ToList();
+
+            ScoresGrid.ItemsSource = filteredData;
         }
 
         private void ExportToCsv_Click(object sender, RoutedEventArgs e)
         {
             var filtered = patientData
                 .SelectMany(kvp => kvp.Value)
-                .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId))
+                .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.PatientId)
+                .ThenBy(s => s.Date)
                 .ToList();
 
             if (!filtered.Any())
@@ -296,10 +333,10 @@ namespace PatientTrackerWPF
             }
 
             var sb = new StringBuilder();
-            sb.AppendLine("PatientId,PHQ9,GAD7,BDI2,PCL5,YBOCS,Note");
+            sb.AppendLine("PatientId,Date,PHQ9,GAD7,BDI2,PCL5,YBOCS,Note");
             foreach (var s in filtered)
             {
-                sb.AppendLine($"{s.PatientId},{s.PHQ9},{s.GAD7},{s.BDI2},{s.PCL5},{s.YBOCS},{s.Date.ToShortDateString()},{s.Note}");
+                sb.AppendLine($"{s.PatientId},{s.Date:yyyy-MM-dd},{s.PHQ9},{s.GAD7},{s.BDI2},{s.PCL5},{s.YBOCS},\"{s.Note?.Replace("\"", "\"\"")}\"");
             }
 
             var filePath = $"PatientScores_{DateTime.Now:yyyyMMdd_HHmmss}.csv";

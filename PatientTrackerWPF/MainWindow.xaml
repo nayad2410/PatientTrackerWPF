@@ -6,87 +6,121 @@
         xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="Patient Score Entry" Height="850" Width="1000">
+        Title="Patient Score Entry" Height="900" Width="1200">
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="400"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <!-- Patient Selector -->
         <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0 0 0 10">
-            <TextBlock Text="Select Patient:" VerticalAlignment="Center" Margin="0 0 10 0"/>
-            <ComboBox x:Name="PatientSelector" Width="150" SelectionChanged="PatientSelector_SelectionChanged"/>
+            <TextBlock Text="Select Patient:" VerticalAlignment="Center" Margin="0 0 10 0" FontWeight="Bold"/>
+            <ComboBox x:Name="PatientSelector" Width="200" SelectionChanged="PatientSelector_SelectionChanged"/>
         </StackPanel>
 
         <!-- Input Fields -->
         <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0 0 0 10">
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="Patient ID"/>
-                <TextBox x:Name="PatientIdBox" Width="100"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="Patient ID" FontWeight="SemiBold"/>
+                <TextBox x:Name="PatientIdBox" Width="100" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="PHQ-9"/>
-                <TextBox x:Name="Phq9Box" Width="60"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="PHQ-9" FontWeight="SemiBold"/>
+                <TextBox x:Name="Phq9Box" Width="60" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="GAD-7"/>
-                <TextBox x:Name="Gad7Box" Width="60"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="GAD-7" FontWeight="SemiBold"/>
+                <TextBox x:Name="Gad7Box" Width="60" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="BDI-II"/>
-                <TextBox x:Name="Bdi2Box" Width="60"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="BDI-II" FontWeight="SemiBold"/>
+                <TextBox x:Name="Bdi2Box" Width="60" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="PCL-5"/>
-                <TextBox x:Name="PCL5Total" Width="60"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="PCL-5" FontWeight="SemiBold"/>
+                <TextBox x:Name="PCL5Total" Width="60" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="YBOCS"/>
-                <TextBox x:Name="YBOCS" Width="60"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="Y-BOCS" FontWeight="SemiBold"/>
+                <TextBox x:Name="YBOCS" Width="60" Height="25"/>
             </StackPanel>
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="Date"/>
-                <DatePicker x:Name="DatePicker" SelectedDate="{x:Static sys:DateTime.Now}" Width="120"/>
+            <StackPanel Margin="0 0 15 0">
+                <TextBlock Text="Date" FontWeight="SemiBold"/>
+                <DatePicker x:Name="DatePicker" SelectedDate="{x:Static sys:DateTime.Now}" Width="120" Height="25"/>
             </StackPanel>
-            <Button Content="Add Score" Click="AddScore_Click" Margin="10 0"/>
+            <Button Content="Add Score" Click="AddScore_Click" Margin="10 20 0 0" Height="30" Width="80" Background="LightBlue"/>
         </StackPanel>
 
         <!-- Note Box -->
-        <StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0 0 0 10">
-            <StackPanel Margin="0 0 20 0">
-                <TextBlock Text="Note"/>
-                <TextBox x:Name="NoteBox" Width="600" Height="40" TextWrapping="Wrap"/>
-            </StackPanel>
+        <StackPanel Grid.Row="2" Margin="0 0 0 10">
+            <TextBlock Text="Treatment Notes" FontWeight="SemiBold" Margin="0 0 0 5"/>
+            <TextBox x:Name="NoteBox" Width="800" Height="60" TextWrapping="Wrap" 
+                     HorizontalAlignment="Left" VerticalScrollBarVisibility="Auto"/>
         </StackPanel>
 
         <!-- Chart -->
-        <lvc:CartesianChart Grid.Row="3"
-                            Name="progressChart"
-                            Series="{Binding ScoreSeriesCollection}"
-                            Height="250"
-                            VerticalAlignment="Top"
-                            Margin="0 10">
-            <lvc:CartesianChart.AxisY>
-                <lvc:Axis Title="Score" MinValue="0" MaxValue="100">
-                    <lvc:Axis.Separator>
-                        <lvc:Separator Step="10"/>
-                    </lvc:Axis.Separator>
-                </lvc:Axis>
-            </lvc:CartesianChart.AxisY>
-        </lvc:CartesianChart>
+        <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Margin="0 10" Padding="10">
+            <StackPanel>
+                <lvc:CartesianChart x:Name="PatientProgressChart"
+                                    Series="{Binding ScoreSeriesCollection}"
+                                    Background="White"
+                                    Height="300">
+                    <lvc:CartesianChart.AxisY>
+                        <lvc:Axis Title="Score" MinValue="0" MaxValue="80" FontSize="12">
+                            <lvc:Axis.Separator>
+                                <lvc:Separator Step="10" IsEnabled="True"/>
+                            </lvc:Axis.Separator>
+                        </lvc:Axis>
+                    </lvc:CartesianChart.AxisY>
+                </lvc:CartesianChart>
+
+                <!-- Chart Legend -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 10 0 0">
+                    <!-- PHQ-9 -->
+                    <StackPanel Orientation="Horizontal" Margin="0 0 20 0">
+                        <Rectangle Width="20" Height="3" Fill="MediumBlue" VerticalAlignment="Center"/>
+                        <TextBlock Text="PHQ-9" Margin="5 0 0 0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- GAD-7 -->
+                    <StackPanel Orientation="Horizontal" Margin="0 0 20 0">
+                        <Rectangle Width="20" Height="3" Fill="ForestGreen" VerticalAlignment="Center"/>
+                        <TextBlock Text="GAD-7" Margin="5 0 0 0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- BDI-II -->
+                    <StackPanel Orientation="Horizontal" Margin="0 0 20 0">
+                        <Rectangle Width="20" Height="3" Fill="OrangeRed" VerticalAlignment="Center"/>
+                        <TextBlock Text="BDI-II" Margin="5 0 0 0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- PCL-5 -->
+                    <StackPanel Orientation="Horizontal" Margin="0 0 20 0">
+                        <Rectangle Width="20" Height="3" Fill="DarkCyan" VerticalAlignment="Center"/>
+                        <TextBlock Text="PCL-5" Margin="5 0 0 0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- Y-BOCS -->
+                    <StackPanel Orientation="Horizontal">
+                        <Rectangle Width="20" Height="3" Fill="Purple" VerticalAlignment="Center"/>
+                        <TextBlock Text="Y-BOCS" Margin="5 0 0 0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
 
         <!-- Filter + Export -->
         <StackPanel Orientation="Horizontal" Grid.Row="4" Margin="0 10">
-            <TextBlock Text="Filter by Patient ID:" VerticalAlignment="Center" Margin="0 0 10 0"/>
-            <TextBox x:Name="FilterBox" Width="100" Margin="0 0 10 0" TextChanged="FilterBox_TextChanged"/>
-            <Button Content="Export to CSV" Click="ExportToCsv_Click"/>
-            <Button Content="Export to PNG" Click="ExportToPng_Click" Margin="10 0"/>
+            <TextBlock Text="Filter by Patient ID:" VerticalAlignment="Center" Margin="0 0 10 0" FontWeight="SemiBold"/>
+            <TextBox x:Name="FilterBox" Width="150" Height="25" Margin="0 0 10 0" TextChanged="FilterBox_TextChanged"/>
+            <Button Content="Export to CSV" Click="ExportToCsv_Click" Height="30" Width="100" Background="LightGreen" Margin="0 0 10 0"/>
+            <Button Content="Export to PNG" Click="ExportToPng_Click" Height="30" Width="100" Background="LightCoral"/>
         </StackPanel>
 
         <!-- Data Grid -->
@@ -96,23 +130,24 @@
                   IsReadOnly="True"
                   CanUserAddRows="False"
                   HeadersVisibility="Column"
-                  TextOptions.TextFormattingMode="Display">
+                  GridLinesVisibility="All"
+                  AlternatingRowBackground="LightGray"
+                  FontSize="11">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="PatientId" Binding="{Binding PatientId}" Width="SizeToHeader"/>
-                <DataGridTextColumn Header="PHQ9" Binding="{Binding PHQ9}" Width="60"/>
-                <DataGridTextColumn Header="GAD7" Binding="{Binding GAD7}" Width="60"/>
-                <DataGridTextColumn Header="PCL5" Binding="{Binding PCL5}" Width="60"/>
-                <DataGridTextColumn Header="BDI2" Binding="{Binding BDI2}" Width="60"/>
-                <DataGridTextColumn Header="PCL5Total" Binding="{Binding PCL5Total}" Width="60"/>
-                <DataGridTextColumn Header="YBOCS" Binding="{Binding YBOCS}" Width="60"/>
-                <DataGridTemplateColumn Header="Note" Width="*">
+                <DataGridTextColumn Header="Patient ID" Binding="{Binding PatientId}" Width="100"/>
+                <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}" Width="100"/>
+                <DataGridTextColumn Header="PHQ-9" Binding="{Binding PHQ9}" Width="60"/>
+                <DataGridTextColumn Header="GAD-7" Binding="{Binding GAD7}" Width="60"/>
+                <DataGridTextColumn Header="BDI-II" Binding="{Binding BDI2}" Width="60"/>
+                <DataGridTextColumn Header="PCL-5" Binding="{Binding PCL5}" Width="60"/>
+                <DataGridTextColumn Header="Y-BOCS" Binding="{Binding YBOCS}" Width="70"/>
+                <DataGridTemplateColumn Header="Notes" Width="*">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Note}" TextWrapping="Wrap" Padding="5" MaxWidth="1000"/>
+                            <TextBlock Text="{Binding Note}" TextWrapping="Wrap" Padding="5" MaxWidth="400"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="180"/>
             </DataGrid.Columns>
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow">
@@ -123,55 +158,70 @@
         </DataGrid>
 
         <!-- Export Layout (Hidden) -->
-        <Grid x:Name="ExportLayout" Visibility="Collapsed" Background="White">
-            <Border Padding="40" Background="White">
-                <StackPanel Width="2200" Orientation="Vertical" >
+        <Grid x:Name="ExportLayout" Visibility="Collapsed" Background="White" Width="1600" Height="1200">
+            <Border Padding="30" Background="White">
+                <StackPanel Orientation="Vertical">
 
                     <!-- Header -->
-                    <TextBlock Text="Patient Report" FontSize="28" FontWeight="Bold" Margin="0 0 0 20"/>
-                    <TextBlock x:Name="ExportPatientId" FontWeight="Bold" FontSize="16"/>
-                    <TextBlock x:Name="ExportDate" FontSize="14" Margin="0 0 0 20"/>
-
-                    <!-- Data Table -->
-                    <DataGrid x:Name="ExportScoreGrid"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      HeadersVisibility="Column"
-                      CanUserAddRows="False"
-                      CanUserResizeRows="False"
-                      Margin="0 0 0 20"
-                      FontSize="14"
-                      ColumnHeaderHeight="32"
-                    >
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="PatientId" Binding="{Binding PatientId}" Width="80"/>
-                            <DataGridTextColumn Header="PHQ9" Binding="{Binding PHQ9}" Width="60"/>
-                            <DataGridTextColumn Header="GAD7" Binding="{Binding GAD7}" Width="60"/>
-                            <DataGridTextColumn Header="PCL5" Binding="{Binding PCL5}" Width="60"/>
-                            <DataGridTextColumn Header="BDI2" Binding="{Binding BDI2}" Width="60"/>
-                            <DataGridTextColumn Header="PCL5Total" Binding="{Binding PCL5Total}" Width="80"/>
-                            <DataGridTextColumn Header="YBOCS" Binding="{Binding YBOCS}" Width="60"/>
-                            <DataGridTextColumn Header="Date" Binding="{Binding Date}" Width="180"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <TextBlock Text="Patient Progress Report" FontSize="24" FontWeight="Bold" Margin="0 0 0 15" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="ExportPatientId" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" Margin="0 0 0 5"/>
+                    <TextBlock x:Name="ExportDate" FontSize="12" HorizontalAlignment="Center" Margin="0 0 0 20"/>
 
                     <!-- Chart -->
-                    <Image x:Name="ExportChartImage"
-       Height="300"
-       Width="2200"
-       HorizontalAlignment="Left"
-       Stretch="None"
-       Margin="0 0 0 20"/>
+                    <TextBlock Text="Progress Chart" FontSize="16" FontWeight="Bold" Margin="0 0 0 10"/>
+                    <Border BorderBrush="LightGray" BorderThickness="1" Padding="10" Margin="0 0 0 20">
+                        <Image x:Name="ExportChartImage"
+                               Height="250"
+                               Width="1500"
+                               HorizontalAlignment="Center"
+                               Stretch="Uniform"/>
+                    </Border>
 
+                    <!-- Data Table -->
+                    <TextBlock Text="Score History" FontSize="16" FontWeight="Bold" Margin="0 0 0 10"/>
+                    <Border BorderBrush="LightGray" BorderThickness="1" Margin="0 0 0 20" MaxHeight="300">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <DataGrid x:Name="ExportScoreGrid"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      HeadersVisibility="Column"
+                                      CanUserAddRows="False"
+                                      CanUserResizeRows="False"
+                                      FontSize="11"
+                                      ColumnHeaderHeight="25"
+                                      GridLinesVisibility="All"
+                                      Background="White"
+                                      BorderThickness="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}" Width="80"/>
+                                    <DataGridTextColumn Header="PHQ-9" Binding="{Binding PHQ9}" Width="50"/>
+                                    <DataGridTextColumn Header="GAD-7" Binding="{Binding GAD7}" Width="50"/>
+                                    <DataGridTextColumn Header="BDI-II" Binding="{Binding BDI2}" Width="50"/>
+                                    <DataGridTextColumn Header="PCL-5" Binding="{Binding PCL5}" Width="50"/>
+                                    <DataGridTextColumn Header="Y-BOCS" Binding="{Binding YBOCS}" Width="60"/>
+                                    <DataGridTemplateColumn Header="Notes" Width="400">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Note}" TextWrapping="Wrap" Padding="3" MaxWidth="390" FontSize="10"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </ScrollViewer>
+                    </Border>
 
-
-                    <!-- Notes -->
-                    <TextBlock Text="Treatment Notes:" FontSize="18" FontWeight="Bold" Margin="0 0 0 10"/>
-                    <TextBlock x:Name="ExportNoteText"
-                       FontSize="14"
-                       TextWrapping="Wrap"
-                       Width="1800"
-                       Margin="0 0 0 20"/>
+                    <!-- Notes Summary -->
+                    <TextBlock Text="Treatment Notes Summary" FontSize="16" FontWeight="Bold" Margin="0 0 0 10"/>
+                    <Border BorderBrush="LightGray" BorderThickness="1" Padding="15" Margin="0 0 0 10" MaxHeight="200">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <TextBlock x:Name="ExportNoteText"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Width="1520"
+                                       LineHeight="16"/>
+                        </ScrollViewer>
+                    </Border>
                 </StackPanel>
             </Border>
         </Grid>
