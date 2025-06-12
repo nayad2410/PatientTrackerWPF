@@ -1,5 +1,8 @@
 ﻿using LiveCharts;
 using LiveCharts.Wpf;
+using PatientTrackerWPF.Data;
+using PatientTrackerWPF.Models;
+using PatientTrackerWPF.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,8 +12,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using PatientTrackerWPF.Services;
-using PatientTrackerWPF.Models;
 
 namespace PatientTrackerWPF
 {
@@ -92,6 +93,8 @@ namespace PatientTrackerWPF
             DataContext = this;
         }
 
+        // Add this test method to MainWindow for debugging
+    
         private void AddScore_Click(object sender, RoutedEventArgs e)
         {
             string patientId = PatientIdBox.Text.Trim();
