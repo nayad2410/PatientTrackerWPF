@@ -6,7 +6,7 @@
         xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="Patient Score Entry" Height="900" Width="1200">
+        Title="Patient Score Entry" Height="1000" Width="1200">
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -14,6 +14,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="400"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -123,9 +124,80 @@
             <Button Content="Export to PNG" Click="ExportToPng_Click" Height="30" Width="100" Background="LightCoral"/>
         </StackPanel>
 
+        <!-- Clinical Metrics Section -->
+        <Border Grid.Row="5" BorderBrush="DarkBlue" BorderThickness="2" Margin="0 10" Padding="15" Background="LightBlue">
+            <StackPanel>
+                <TextBlock Text="BDI-II Clinical Outcomes" FontSize="16" FontWeight="Bold" Margin="0 0 0 10" HorizontalAlignment="Center"/>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Response Rate -->
+                    <StackPanel Grid.Column="0" Margin="0 0 10 0">
+                        <TextBlock Text="Response Rate" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="(≥50% improvement)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                        <TextBlock x:Name="ResponseRateText" Text="0.0%" FontSize="20" FontWeight="Bold" 
+                                   HorizontalAlignment="Center" Foreground="Green"/>
+                        <TextBlock x:Name="ResponseCountText" Text="(0/0 patients)" FontSize="10" 
+                                   HorizontalAlignment="Center" Foreground="Gray"/>
+                    </StackPanel>
+
+                    <!-- Remission Rate -->
+                    <StackPanel Grid.Column="1" Margin="0 0 10 0">
+                        <TextBlock Text="Remission Rate" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="(score &lt;14)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                        <TextBlock x:Name="RemissionRateText" Text="0.0%" FontSize="20" FontWeight="Bold" 
+                                   HorizontalAlignment="Center" Foreground="Blue"/>
+                        <TextBlock x:Name="RemissionCountText" Text="(0/0 patients)" FontSize="10" 
+                                   HorizontalAlignment="Center" Foreground="Gray"/>
+                    </StackPanel>
+
+                    <!-- Average Improvement -->
+                    <StackPanel Grid.Column="2" Margin="0 0 10 0">
+                        <TextBlock Text="Average Improvement" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="(all patients)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                        <TextBlock x:Name="AverageImprovementText" Text="0.0%" FontSize="20" FontWeight="Bold" 
+                                   HorizontalAlignment="Center" Foreground="Orange"/>
+                    </StackPanel>
+
+                    <!-- Eligible Patients -->
+                    <StackPanel Grid.Column="3" Margin="0 0 10 0">
+                        <TextBlock Text="Eligible Patients" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="(baseline ≥14, 2+ assessments)" FontSize="9" HorizontalAlignment="Center" Foreground="Gray"/>
+                        <TextBlock x:Name="EligiblePatientsText" Text="0" FontSize="20" FontWeight="Bold" 
+                                   HorizontalAlignment="Center" Foreground="Purple"/>
+                    </StackPanel>
+
+                    <!-- Buttons -->
+                    <StackPanel Grid.Column="4" Orientation="Vertical">
+                        <Button x:Name="CalculateMetricsBtn" Content="Calculate Metrics" 
+                                Click="CalculateMetrics_Click" Margin="0 0 0 5" Height="30" Width="120" 
+                                Background="DarkBlue" Foreground="White" FontWeight="Bold"/>
+                        <Button x:Name="ExportMetricsBtn" Content="Export Report" 
+                                Click="ExportMetricsReport_Click" Height="30" Width="120" 
+                                Background="DarkGreen" Foreground="White" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Current Patient Outcome -->
+                <Border BorderBrush="Gray" BorderThickness="1" Margin="0 10 0 0" Padding="10" Background="White">
+                    <StackPanel x:Name="CurrentPatientOutcome" Visibility="Collapsed">
+                        <TextBlock x:Name="CurrentPatientOutcomeTitle" Text="" FontWeight="Bold" Margin="0 0 0 5"/>
+                        <TextBlock x:Name="CurrentPatientOutcomeDetails" Text="" FontSize="12"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
         <!-- Data Grid -->
         <DataGrid x:Name="ScoresGrid"
-                  Grid.Row="5"
+                  Grid.Row="6"
                   AutoGenerateColumns="False"
                   IsReadOnly="True"
                   CanUserAddRows="False"

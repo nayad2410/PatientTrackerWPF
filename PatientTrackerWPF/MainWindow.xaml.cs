@@ -9,7 +9,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.ComponentModel.DataAnnotations;
+using PatientTrackerWPF.Services;
+using PatientTrackerWPF.Models;
 
 namespace PatientTrackerWPF
 {
@@ -17,24 +18,10 @@ namespace PatientTrackerWPF
     {
         private string filterId = "";
         private Dictionary<string, List<ScoreEntry>> patientData = new Dictionary<string, List<ScoreEntry>>();
+        private ClinicalMetricsService metricsService = new ClinicalMetricsService();
+        private ClinicalMetricsService.ClinicalMetrics? currentMetrics;
 
-        public class ScoreEntry
-        {
-            [Key]
-            public int Id { get; set; }
-
-            [Required]
-            public string PatientId { get; set; } = string.Empty;
-
-            public int PHQ9 { get; set; }
-            public int GAD7 { get; set; }
-            public int PCL5 { get; set; }
-            public int BDI2 { get; set; }
-            public int YBOCS { get; set; }
-            public string Note { get; set; } = string.Empty;
-            public DateTime Date { get; set; }
-        }
-
+        // Chart properties
         public SeriesCollection ScoreSeriesCollection { get; set; }
         public ChartValues<int> Phq9Values { get; set; } = new ChartValues<int>();
         public ChartValues<int> Gad7Values { get; set; } = new ChartValues<int>();
@@ -224,6 +211,116 @@ namespace PatientTrackerWPF
             });
         }
 
+        private void CalculateMetrics_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Calculate metrics for all patients
+                currentMetrics = metricsService.CalculateBDI2Metrics(patientData);
+
+                // Update UI with calculated metrics
+                UpdateMetricsDisplay(currentMetrics);
+
+                // Show current patient outcome if one is selected
+                var selectedPatientId = PatientSelector.SelectedItem?.ToString();
+                if (!string.IsNullOrEmpty(selectedPatientId))
+                {
+                    UpdateCurrentPatientOutcome(selectedPatientId);
+                }
+
+                MessageBox.Show($"Metrics calculated successfully!\n\n" +
+                               $"Eligible patients: {currentMetrics.PatientsWithMultipleAssessments}\n" +
+                               $"Response rate: {currentMetrics.ResponseRate:F1}%\n" +
+                               $"Remission rate: {currentMetrics.RemissionRate:F1}%",
+                               "Clinical Metrics", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error calculating metrics: {ex.Message}", "Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void UpdateMetricsDisplay(ClinicalMetricsService.ClinicalMetrics metrics)
+        {
+            // Update response rate
+            ResponseRateText.Text = $"{metrics.ResponseRate:F1}%";
+            ResponseCountText.Text = $"({metrics.ResponseCount}/{metrics.PatientsWithMultipleAssessments} patients)";
+
+            // Update remission rate
+            RemissionRateText.Text = $"{metrics.RemissionRate:F1}%";
+            RemissionCountText.Text = $"({metrics.RemissionCount}/{metrics.PatientsWithMultipleAssessments} patients)";
+
+            // Update average improvement
+            AverageImprovementText.Text = $"{metrics.AverageImprovement:F1}%";
+
+            // Update eligible patients count
+            EligiblePatientsText.Text = metrics.PatientsWithMultipleAssessments.ToString();
+
+            // Color coding based on rates
+            ResponseRateText.Foreground = metrics.ResponseRate >= 50 ? Brushes.Green :
+                                         metrics.ResponseRate >= 30 ? Brushes.Orange : Brushes.Red;
+
+            RemissionRateText.Foreground = metrics.RemissionRate >= 30 ? Brushes.Blue :
+                                          metrics.RemissionRate >= 15 ? Brushes.Orange : Brushes.Red;
+        }
+
+        private void UpdateCurrentPatientOutcome(string patientId)
+        {
+            if (currentMetrics == null || !patientData.ContainsKey(patientId))
+            {
+                CurrentPatientOutcome.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var outcome = currentMetrics.PatientOutcomes.FirstOrDefault(p => p.PatientId == patientId);
+            if (outcome == null)
+            {
+                CurrentPatientOutcomeTitle.Text = $"Patient {patientId}: Not eligible for outcome analysis";
+                CurrentPatientOutcomeDetails.Text = "Requires baseline BDI-II ≥14 and at least 2 assessments with BDI-II scores.";
+                CurrentPatientOutcome.Visibility = Visibility.Visible;
+                return;
+            }
+
+            CurrentPatientOutcomeTitle.Text = $"Patient {patientId} - Clinical Outcome";
+
+            var details = $"Baseline BDI-II: {outcome.BaselineBDI2} ({outcome.BaselineDate:yyyy-MM-dd}) → " +
+                         $"Most Recent: {outcome.MostRecentBDI2} ({outcome.MostRecentDate:yyyy-MM-dd})\n" +
+                         $"Improvement: {outcome.PercentImprovement:F1}% over {outcome.DaysBetweenAssessments} days\n" +
+                         $"Response (≥50% improvement): {(outcome.HasResponse ? "YES" : "NO")} | " +
+                         $"Remission (score <14): {(outcome.HasRemission ? "YES" : "NO")}\n" +
+                         $"Total BDI-II assessments: {outcome.TotalAssessments}";
+
+            CurrentPatientOutcomeDetails.Text = details;
+            CurrentPatientOutcome.Visibility = Visibility.Visible;
+        }
+
+        private void ExportMetricsReport_Click(object sender, RoutedEventArgs e)
+        {
+            if (currentMetrics == null)
+            {
+                MessageBox.Show("Please calculate metrics first.", "No Data",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                var report = metricsService.GenerateMetricsReport(currentMetrics);
+                var fileName = $"BDI2_ClinicalOutcomes_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+
+                File.WriteAllText(fileName, report);
+
+                MessageBox.Show($"Clinical outcomes report exported to {fileName}", "Export Successful",
+                               MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error exporting report: {ex.Message}", "Export Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void ExportToPng_Click(object sender, RoutedEventArgs e)
         {
             string patientId = PatientSelector.Text?.Trim();
@@ -301,6 +398,12 @@ namespace PatientTrackerWPF
             if (!string.IsNullOrWhiteSpace(patientId))
             {
                 UpdateChartForPatient(patientId);
+
+                // Update current patient outcome if metrics have been calculated
+                if (currentMetrics != null)
+                {
+                    UpdateCurrentPatientOutcome(patientId);
+                }
             }
         }
 
