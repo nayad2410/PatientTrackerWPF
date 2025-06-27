@@ -1,0 +1,274 @@
+﻿<Window x:Class="PatientTrackerWPF.RemissionHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="All-Time Remission Analysis - Reconnect Progress Tracker" 
+        Height="700" Width="1000"
+        WindowStartupLocation="CenterScreen"
+        Background="#E6F3FF">
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header with Logo -->
+        <Border Grid.Row="0" Background="#2B5F75" Padding="15" Margin="0 0 0 15">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Reconnect Logo Section -->
+                <Border Grid.Column="0" Background="#2B5F75" Height="60" 
+                        Margin="0 0 20 0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Logo Image -->
+                        <Image Source="/Images/Logo_Reconnect1.png" 
+                               Width="150" Height="40"
+                               Stretch="Uniform" 
+                               Margin="0"
+                               HorizontalAlignment="Left" 
+                               VerticalAlignment="Center"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               RenderOptions.EdgeMode="Aliased"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="All-Time Remission Analysis" FontSize="20" FontWeight="Bold" 
+                              Foreground="White" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Tracking all patients who ever achieved remission (BDI-II &lt; 14)" 
+                              FontSize="12" Foreground="LightGray" HorizontalAlignment="Center" Margin="0 5 0 0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Summary Metrics -->
+        <Border Grid.Row="1" BorderBrush="#2B5F75" BorderThickness="2" Padding="15" 
+                Background="#E6F3FF" Margin="0 0 0 15">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- All-Time Remission Rate -->
+                <StackPanel Grid.Column="0" Margin="0 0 10 0">
+                    <TextBlock Text="All-Time Remission Rate" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                    <TextBlock Text="(ever reached &lt;14)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock x:Name="AllTimeRemissionRateText" Text="0.0%" FontSize="20" FontWeight="Bold" 
+                               HorizontalAlignment="Center" Foreground="Purple"/>
+                    <TextBlock x:Name="AllTimeRemissionCountText" Text="(0/0 patients)" FontSize="10" 
+                               HorizontalAlignment="Center" Foreground="Gray"/>
+                </StackPanel>
+
+                <!-- Currently in Remission -->
+                <StackPanel Grid.Column="1" Margin="0 0 10 0">
+                    <TextBlock Text="Currently in Remission" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                    <TextBlock Text="(active now)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock x:Name="CurrentRemissionText" Text="0" FontSize="20" FontWeight="Bold" 
+                               HorizontalAlignment="Center" Foreground="Green"/>
+                </StackPanel>
+
+                <!-- Lost Remission -->
+                <StackPanel Grid.Column="2" Margin="0 0 10 0">
+                    <TextBlock Text="Lost Remission" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                    <TextBlock Text="(relapsed)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock x:Name="LostRemissionText" Text="0" FontSize="20" FontWeight="Bold" 
+                               HorizontalAlignment="Center" Foreground="Red"/>
+                </StackPanel>
+
+                <!-- Average Duration -->
+                <StackPanel Grid.Column="3" Margin="0 0 10 0">
+                    <TextBlock Text="Avg. Duration" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                    <TextBlock Text="(completed periods)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock x:Name="AvgDurationText" Text="0 days" FontSize="20" FontWeight="Bold" 
+                               HorizontalAlignment="Center" Foreground="Orange"/>
+                </StackPanel>
+
+                <!-- Export Button -->
+                <StackPanel Grid.Column="4" Orientation="Vertical">
+                    <Button x:Name="ExportRemissionBtn" Content="Export Report" 
+                            Click="ExportRemissionReport_Click" Height="30" Width="120" 
+                            Background="#2B5F75" Foreground="White" FontWeight="Bold"
+                            BorderThickness="0" Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" 
+                                                    CornerRadius="5" Padding="10">
+                                                <ContentPresenter HorizontalAlignment="Center" 
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#1E4A5F"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Remission Periods Data Grid -->
+        <Border Grid.Row="2" BorderBrush="#2B5F75" BorderThickness="1" Padding="5" Background="White">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Detailed Remission Periods" FontSize="16" FontWeight="Bold" 
+                          Margin="5" Background="#E6F3FF" Padding="10" Foreground="#2B5F75"/>
+
+                <DataGrid x:Name="RemissionPeriodsGrid" Grid.Row="1"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          CanUserAddRows="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="All"
+                          AlternatingRowBackground="#F0F8FF"
+                          FontSize="11"
+                          Background="White" SelectionChanged="RemissionPeriodsGrid_SelectionChanged">
+
+                    <DataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#2B5F75"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                            <Setter Property="Padding" Value="8"/>
+                        </Style>
+                    </DataGrid.ColumnHeaderStyle>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Patient ID" Binding="{Binding PatientId}" Width="100">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Remission Start" Binding="{Binding RemissionStartDate, StringFormat={}{0:yyyy-MM-dd}}" Width="120">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Remission End" Binding="{Binding RemissionEndDate, StringFormat={}{0:yyyy-MM-dd}}" Width="120">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Days in Remission" Binding="{Binding DaysInRemission}" Width="120">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Status" Binding="{Binding RemissionStatus}" Width="80">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="Current">
+                                            <Setter Property="Foreground" Value="Green"/>
+                                        </Trigger>
+                                        <Trigger Property="Text" Value="Lost">
+                                            <Setter Property="Foreground" Value="Red"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Start Score" Binding="{Binding ScoreAtRemissionStart}" Width="80">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="End Score" Binding="{Binding ScoreAtRemissionEnd}" Width="80">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCurrentlyInRemission}" Value="True">
+                                    <Setter Property="Background" Value="LightGreen"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <!-- Footer -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 15 0 0">
+            <Button Content="Close" Click="Close_Click" Width="100" Height="35" 
+                    Background="#2B5F75" Foreground="White" FontWeight="Bold"
+                    BorderThickness="0" Cursor="Hand">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" 
+                                            CornerRadius="5" Padding="10">
+                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                        VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#1E4A5F"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

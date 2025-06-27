@@ -1,86 +1,178 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using PatientTrackerWPF.Services;
+using System;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using PatientTrackerWPF.Data;
-using PatientTrackerWPF.Models;
 
 namespace PatientTrackerWPF
 {
-    /// <summary>
-    /// Interaction logic for loginWindow.xaml
-    /// </summary>
-    public partial class loginWindow : Window
+    public partial class LoginWindow : Window
     {
-        public loginWindow()
+        private readonly AuthenticationService authService;
+
+        public LoginWindow()
         {
             InitializeComponent();
+            authService = new AuthenticationService();
+
+            // Set focus to username box
+            Loaded += (s, e) => UsernameTextBox.Focus();
+
+            // Handle Enter key in password box
+            PasswordTextBox.KeyDown += PasswordTextBox_KeyDown;
+            UsernameTextBox.KeyDown += UsernameTextBox_KeyDown;
         }
 
-        private void LoginButton_Click(object sender, RoutedEventArgs e)
+        private void UsernameTextBox_KeyDown(object sender, KeyEventArgs e)
         {
-            string username = UsernameBox.Text;
-            string password = PasswordBox.Password;
-            if (username =="admin" && password == "admin123")
+            if (e.Key == Key.Enter)
             {
-                MessageBox.Show("Login successful!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-            
-                // Optionally, open the main application window here
-                MainWindow mainWindow = new MainWindow();
-                mainWindow.Show(); // Show the main application window
-                this.Close(); // Close the login window
-
+                PasswordTextBox.Focus();
             }
-            else
+        }
+
+        private void PasswordTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
             {
-                MessageBox.Show("Invalid username or password.", "Login Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                LoginBtn_Click(sender, e);
             }
-            /*       string username = UsernameTextBox.Text.Trim();
-                   string password = PasswordBox.Password.Trim();
-                   if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-                   {
-                       MessageBox.Show("Please enter both username and password.", "Login Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                       return;
-                   }
-                   // Here you would typically call your authentication service
-                   // For example:
-                   // var authService = new AuthenticationService();
-                   // var result = await authService.LoginAsync(username, password);
-                   // Simulating a successful login for demonstration purposes
-                   bool loginSuccess = true; // Replace with actual login logic
-                   if (loginSuccess)
-                   {
-                       MessageBox.Show("Login successful!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                       this.Close(); // Close the login window
-                       // Optionally, open the main application window here
-                   }
-                   else
-                   {
-                       MessageBox.Show("Invalid username or password.", "Login Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                   }*/
-
-
         }
 
-        private void ForgotPasswordButton_Click(object sender, RoutedEventArgs e)
+        private async void LoginBtn_Click(object sender, RoutedEventArgs e)
         {
-          
+            var username = UsernameTextBox.Text.Trim();
+            var password = PasswordTextBox.Password;
+
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                ShowStatus("Please enter your username.", isError: true);
+                UsernameTextBox.Focus();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                ShowStatus("Please enter your password.", isError: true);
+                PasswordTextBox.Focus();
+                return;
+            }
+
+            // TEMPORARY: For testing without database - remove when database is ready
+            if (username == "test" && password == "test")
+            {
+                ShowStatus("Login successful!", isError: false);
+                await Task.Delay(500);
+
+                // Open main window without auth service
+                var mainWindow = new MainWindow();
+                mainWindow.Show();
+                this.Close();
+                return;
+            }
+
+            // Real authentication when database is available
+            await PerformLoginAsync(username, password);
         }
 
-        private void CreateAccountButton_Click(object sender, RoutedEventArgs e)
+        private async Task PerformLoginAsync(string username, string password)
         {
-      
+            try
+            {
+                ShowLoading(true);
+                ShowStatus("Authenticating...", isError: false);
+
+                var result = await authService.LoginAsync(username, password);
+
+                if (result.Success)
+                {
+                    ShowStatus($"Welcome, {result.User?.FullName}!", isError: false);
+
+                    // Small delay to show success message
+                    await Task.Delay(500);
+
+                    // Open main window and close login window
+                    var mainWindow = new MainWindow(authService);
+                    mainWindow.Show();
+                    this.Close();
+                }
+                else
+                {
+                    ShowStatus(result.Message, isError: true);
+                    PasswordTextBox.Clear();
+                    PasswordTextBox.Focus();
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowStatus($"Login error: {ex.Message}", isError: true);
+                PasswordTextBox.Clear();
+                PasswordTextBox.Focus();
+            }
+            finally
+            {
+                ShowLoading(false);
+            }
         }
 
+        private void ForgotPasswordBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var passwordResetWindow = new PasswordResetWindow();
+                passwordResetWindow.Owner = this;
+                var result = passwordResetWindow.ShowDialog();
 
+                if (result == true)
+                {
+                    ShowStatus("Password has been reset successfully. Please login with your new password.", isError: false);
+                    UsernameTextBox.Focus();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening password reset window: {ex.Message}",
+                               "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void CreateAccountBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var createAccountWindow = new CreateAccountWindow();
+                createAccountWindow.Owner = this;
+                var result = createAccountWindow.ShowDialog();
+
+                if (result == true)
+                {
+                    ShowStatus("Account created successfully! Please login with your new credentials.", isError: false);
+                    UsernameTextBox.Focus();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening account creation window: {ex.Message}",
+                               "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ShowStatus(string message, bool isError)
+        {
+            StatusMessageText.Text = message;
+            StatusMessageText.Foreground = isError ?
+                System.Windows.Media.Brushes.Red :
+                System.Windows.Media.Brushes.Green;
+        }
+
+        private void ShowLoading(bool isLoading)
+        {
+            LoadingGrid.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            LoginBtn.IsEnabled = !isLoading;
+            UsernameTextBox.IsEnabled = !isLoading;
+            PasswordTextBox.IsEnabled = !isLoading;
+            ForgotPasswordBtn.IsEnabled = !isLoading;
+            CreateAccountBtn.IsEnabled = !isLoading;
+        }
     }
 }
