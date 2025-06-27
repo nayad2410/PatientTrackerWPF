@@ -47,191 +47,612 @@
     </Window.Resources>
 
     <Grid>
-        <!-- Main application layout -->
-        <Grid x:Name="MainGrid" Margin="10">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <!-- 0: Logo/Header -->
-                <RowDefinition Height="Auto"/>
-                <!-- 1: Patient Selector -->
-                <RowDefinition Height="Auto"/>
-                <!-- 2: Input Fields -->
-                <RowDefinition Height="Auto"/>
-                <!-- 3: Treatment Notes -->
-                <RowDefinition Height="5*"/>
-                <!-- 4: Chart + Notes - BIGGER -->
-                <RowDefinition Height="Auto"/>
-                <!-- 5: Filter + Export -->
-                <RowDefinition Height="140"/>
-                <!-- 6: Clinical Metrics - MUCH SMALLER -->
-                <RowDefinition Height="3*"/>
-                <!-- 7: Data Grid -->
-            </Grid.RowDefinitions>
+        <!-- Main application layout wrapped in ScrollViewer -->
+        <ScrollViewer x:Name="MainScrollViewer" 
+                      VerticalScrollBarVisibility="Auto" 
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid x:Name="MainGrid" Margin="10" MinWidth="800">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <!-- 0: Logo/Header -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- 1: Patient Selector -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- 2: Input Fields + Filter + Export Controls -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- 3: Treatment Notes -->
+                    <RowDefinition Height="Auto"/>
+                    <!-- 4: Collapsible Clinical Metrics - MINIMAL when collapsed -->
+                    <RowDefinition Height="450" MinHeight="400"/>
+                    <!-- 5: Chart + Notes - FIXED HEIGHT -->
+                    <RowDefinition Height="300" MinHeight="250"/>
+                    <!-- 6: Data Grid - FIXED HEIGHT -->
+                </Grid.RowDefinitions>
 
-            <!-- 0: Logo/Header -->
-            <Border Grid.Row="0" Background="#2B5F75" Padding="15" Margin="0,0,0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Background="#2B5F75" Height="60" Margin="0,0,20,0" VerticalAlignment="Center">
-                        <Image Source="/Images/Logo_Reconnect1.png"
+                <!-- 0: Logo/Header -->
+                <Border Grid.Row="0" Background="#2B5F75" Padding="15" Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="#2B5F75" Height="60" Margin="0,0,20,0" VerticalAlignment="Center">
+                            <Image Source="/Images/Logo_Reconnect1.png"
                                Width="200" Height="50"
                                Stretch="Uniform"
                                RenderOptions.BitmapScalingMode="HighQuality"
                                RenderOptions.EdgeMode="Aliased"/>
-                    </Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Reconnect Progress Tracker"
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Reconnect Progress Tracker"
                                    FontSize="24" FontWeight="Bold"
                                    Foreground="White" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Mental Health Assessment and Progress Monitoring System"
+                            <TextBlock Text="Mental Health Assessment and Progress Monitoring System"
                                    FontSize="12" Foreground="LightGray"
                                    HorizontalAlignment="Center"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                        <TextBlock Text="Current User:" FontSize="10" Foreground="LightGray"/>
-                        <TextBlock x:Name="CurrentUserText" Text="System User"
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <TextBlock Text="Current User:" FontSize="10" Foreground="LightGray"/>
+                            <TextBlock x:Name="CurrentUserText" Text="System User"
                                    FontSize="12" FontWeight="SemiBold"
                                    Foreground="White"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-            <!-- 1: Patient Selector -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="Select Patient:" VerticalAlignment="Center"
+                <!-- 1: Patient Selector -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Select Patient:" VerticalAlignment="Center"
                            Margin="0,0,10,0" FontWeight="Bold" Foreground="#2B5F75"/>
-                <ComboBox x:Name="PatientSelector"
+                    <ComboBox x:Name="PatientSelector"
                           Width="200"
                           BorderBrush="#2B5F75"
                           BorderThickness="2"
                           SelectionChanged="PatientSelector_SelectionChanged"/>
-            </StackPanel>
+                </StackPanel>
 
-            <!-- 2: Input Fields -->
-            <StackPanel x:Name="InputFieldsPanel"
-                        Grid.Row="2"
-                        Orientation="Horizontal"
-                        Margin="0,0,0,10">
-                <!-- Patient ID -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="Patient ID" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="PatientIdBox" Width="100" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- PHQ-9 -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="PHQ-9" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="Phq9Box" Width="60" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- GAD-7 -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="GAD-7" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="Gad7Box" Width="60" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- BDI-II -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="BDI-II" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="Bdi2Box" Width="60" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- PCL-5 -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="PCL-5" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="PCL5Total" Width="60" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- Y-BOCS -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="Y-BOCS" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <TextBox x:Name="YBOCS" Width="60" Height="25"
-                             BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- Date -->
-                <StackPanel Margin="0,0,15,0">
-                    <TextBlock Text="Date" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                    <DatePicker x:Name="DatePicker"
-                                SelectedDate="{x:Static sys:DateTime.Now}"
-                                Width="120" Height="25"
-                                BorderBrush="#2B5F75" BorderThickness="2"/>
-                </StackPanel>
-                <!-- Add Score Button -->
-                <Button Content="Add Score"
-                        Click="AddScore_Click"
-                        Margin="10,20,0,0"
-                        Width="80" Height="30"
-                        Background="#2B5F75" Foreground="White"
-                        FontWeight="Bold"
-                        BorderThickness="0"
-                        Cursor="Hand">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}"
-                                                CornerRadius="5"
-                                                Padding="8">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="#1E4A5F"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </Button.Style>
-                </Button>
-            </StackPanel>
+                <!-- 2: Input Fields + Filter + Export Controls -->
+                <Grid Grid.Row="2" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <!-- Left: Input fields -->
+                        <ColumnDefinition Width="Auto"/>
+                        <!-- Center: Filter and Export buttons -->
+                        <ColumnDefinition Width="*"/>
+                        <!-- Spacer -->
+                    </Grid.ColumnDefinitions>
 
-            <!-- 3: Treatment Notes -->
-            <StackPanel Grid.Row="3" Margin="0,0,0,10">
-                <TextBlock Text="Treatment Notes" FontWeight="SemiBold"
+                    <!-- Left Side: Input Fields and Add Score Button -->
+                    <StackPanel x:Name="InputFieldsPanel"
+                            Grid.Column="0"
+                            Orientation="Horizontal">
+                        <!-- Patient ID -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="Patient ID" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="PatientIdBox" Width="100" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- PHQ-9 -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="PHQ-9" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="Phq9Box" Width="60" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- GAD-7 -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="GAD-7" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="Gad7Box" Width="60" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- BDI-II -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="BDI-II" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="Bdi2Box" Width="60" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- PCL-5 -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="PCL-5" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="PCL5Total" Width="60" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- Y-BOCS -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="Y-BOCS" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="YBOCS" Width="60" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- Date -->
+                        <StackPanel Margin="0,0,15,0">
+                            <TextBlock Text="Date" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <DatePicker x:Name="DatePicker"
+                                    SelectedDate="{x:Static sys:DateTime.Now}"
+                                    Width="120" Height="25"
+                                    BorderBrush="#2B5F75" BorderThickness="2"/>
+                        </StackPanel>
+                        <!-- Add Score Button -->
+                        <Button Content="Add Score"
+                            Click="AddScore_Click"
+                            Margin="10,20,0,0"
+                            Width="80" Height="30"
+                            Background="#2B5F75" Foreground="White"
+                            FontWeight="Bold"
+                            BorderThickness="0"
+                            Cursor="Hand">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="8">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#1E4A5F"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Right Side: Filter and Export Controls -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
+                        <!-- Filter Section -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,15,0">
+                            <TextBlock Text="Filter:" VerticalAlignment="Center"
+                                   Margin="0,0,5,0" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                            <TextBox x:Name="FilterBox"
+                                 Width="120" Height="25"
+                                 BorderBrush="#2B5F75" BorderThickness="2"
+                                 TextChanged="FilterBox_TextChanged"/>
+                        </StackPanel>
+
+                        <!-- Export Buttons -->
+                        <Button Content="Export CSV"
+                            Click="ExportToCsv_Click"
+                            Width="85" Height="25"
+                            Background="DarkGreen" Foreground="White"
+                            FontWeight="Bold" Margin="0,0,8,0"
+                            BorderThickness="0" Cursor="Hand" FontSize="10">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="6">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#006400"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <Button Content="Export PNG"
+                            Click="ExportToPng_Click"
+                            Width="85" Height="25"
+                            Background="DarkCyan" Foreground="White"
+                            FontWeight="Bold" Margin="0,0,8,0"
+                            BorderThickness="0" Cursor="Hand" FontSize="10">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="6">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#008B8B"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <Button x:Name="btnExportTopPng" Content="All-Time Remissions"
+                            Click="ShowAllTimeRemissions_Click"
+                            Width="130" Height="25"
+                            Background="Purple" Foreground="White"
+                            FontWeight="Bold" BorderThickness="0"
+                            Cursor="Hand" FontSize="10">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="6">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#800080"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 4: Collapsible Clinical Metrics -->
+                <Border Grid.Row="4" 
+                    BorderBrush="#2B5F75"
+                    BorderThickness="2"
+                    Background="#E6F3FF"
+                    Margin="0,0,0,10">
+                    <StackPanel>
+                        <!-- Toggle Header - Always Visible -->
+                        <Border Background="#2B5F75" 
+                            Padding="8,5"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="ToggleMetrics_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Toggle Button -->
+                                <TextBlock x:Name="MetricsToggleIcon" 
+                                       Grid.Column="0"
+                                       Text="▶" 
+                                       FontSize="12" 
+                                       Foreground="White"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"/>
+
+                                <!-- Title -->
+                                <TextBlock Grid.Column="1"
+                                       Text="BDI-II Clinical Outcomes"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="White" 
+                                       VerticalAlignment="Center"/>
+
+                                <!-- Quick Stats when collapsed -->
+                                <StackPanel x:Name="QuickStats" 
+                                        Grid.Column="2" 
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="Response: " FontSize="10" Foreground="LightGray"/>
+                                    <TextBlock x:Name="QuickResponseRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White" Margin="0,0,15,0"/>
+                                    <TextBlock Text="Remission: " FontSize="10" Foreground="LightGray"/>
+                                    <TextBlock x:Name="QuickRemissionRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Expandable Content -->
+                        <StackPanel x:Name="MetricsContent" 
+                                Visibility="Collapsed"
+                                Margin="10">
+
+                            <!-- Main Metrics Grid - Enhanced with more details -->
+                            <Grid Margin="0,0,0,15">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Response Rate -->
+                                <Border Grid.Row="0" Grid.Column="0" 
+                                    Background="White" 
+                                    BorderBrush="#DDD" 
+                                    BorderThickness="1" 
+                                    Padding="10" 
+                                    Margin="0,0,5,5"
+                                    CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Text="Response Rate" FontWeight="Bold" FontSize="12"
+                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                                        <TextBlock Text="(≥50% improvement)" FontSize="9" 
+                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock x:Name="ResponseRateText" Text="0.0%" FontSize="24" FontWeight="Bold"
+                                                   Foreground="Green" Margin="0,0,5,0"/>
+                                            <TextBlock x:Name="ResponseCountText" Text="(0/0)" FontSize="10" Foreground="Gray"
+                                                   VerticalAlignment="Bottom" Margin="0,0,0,3"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="ResponseDetails" Text="No eligible patients yet" 
+                                               FontSize="8" Foreground="Gray" 
+                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Remission Rate -->
+                                <Border Grid.Row="0" Grid.Column="1" 
+                                    Background="White" 
+                                    BorderBrush="#DDD" 
+                                    BorderThickness="1" 
+                                    Padding="10" 
+                                    Margin="0,0,5,5"
+                                    CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Text="Remission Rate" FontWeight="Bold" FontSize="12"
+                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                                        <TextBlock Text="(score &lt;14)" FontSize="9" 
+                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock x:Name="RemissionRateText" Text="0.0%" FontSize="24" FontWeight="Bold"
+                                                   Foreground="Blue" Margin="0,0,5,0"/>
+                                            <TextBlock x:Name="RemissionCountText" Text="(0/0)" FontSize="10" Foreground="Gray"
+                                                   VerticalAlignment="Bottom" Margin="0,0,0,3"/>
+                                        </StackPanel>
+                                        <TextBlock x:Name="RemissionDetails" Text="Target: ≥50% remission rate" 
+                                               FontSize="8" Foreground="Gray" 
+                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Average Improvement -->
+                                <Border Grid.Row="0" Grid.Column="2" 
+                                    Background="White" 
+                                    BorderBrush="#DDD" 
+                                    BorderThickness="1" 
+                                    Padding="10" 
+                                    Margin="0,0,5,5"
+                                    CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Text="Average Improvement" FontWeight="Bold" FontSize="12"
+                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                                        <TextBlock Text="(all patients)" FontSize="9" 
+                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                        <TextBlock x:Name="AverageImprovementText" Text="0.0%" FontSize="24" FontWeight="Bold"
+                                               HorizontalAlignment="Center" Foreground="Orange"/>
+                                        <TextBlock x:Name="ImprovementDetails" Text="Baseline to latest" 
+                                               FontSize="8" Foreground="Gray" 
+                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Control Buttons -->
+                                <StackPanel Grid.Row="0" Grid.Column="3" 
+                                        VerticalAlignment="Center" 
+                                        Margin="10,0,0,0">
+                                    <Button Content="Calculate Metrics" Click="CalculateMetrics_Click"
+                                        Width="120" Height="30" Margin="0,0,0,5"
+                                        Background="#2B5F75" Foreground="White" FontWeight="Bold" 
+                                        BorderThickness="0" Cursor="Hand" FontSize="10">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="5"
+                                                                Padding="8">
+                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#1E4A5F"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <Button Content="Export Report" Click="ExportMetricsReport_Click"
+                                        Width="120" Height="30"
+                                        Background="DarkGreen" Foreground="White" FontWeight="Bold" 
+                                        BorderThickness="0" Cursor="Hand" FontSize="10">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="5"
+                                                                Padding="8">
+                                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#006400"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+
+                                <!-- Secondary Metrics Row -->
+                                <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                    Background="White" 
+                                    BorderBrush="#DDD" 
+                                    BorderThickness="1" 
+                                    Padding="10" 
+                                    Margin="0,0,5,5"
+                                    CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Text="Eligible Patients" FontWeight="Bold" FontSize="12"
+                                               HorizontalAlignment="Center" Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Total Eligible" FontSize="10" Foreground="Gray" HorizontalAlignment="Center"/>
+                                                <TextBlock x:Name="EligiblePatientsText" Text="0" FontSize="18" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" Foreground="Purple"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="Criteria" FontSize="10" Foreground="Gray" HorizontalAlignment="Center"/>
+                                                <TextBlock Text="≥14 baseline, 2+ assessments" FontSize="8" 
+                                                       HorizontalAlignment="Center" Foreground="Gray" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Treatment Duration Analysis -->
+                                <Border Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                    Background="White" 
+                                    BorderBrush="#DDD" 
+                                    BorderThickness="1" 
+                                    Padding="10" 
+                                    Margin="0,0,0,5"
+                                    CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock Text="Treatment Duration Analysis" FontWeight="Bold" FontSize="12"
+                                               HorizontalAlignment="Center" Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Avg Duration" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
+                                                <TextBlock x:Name="AvgDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" Foreground="DarkBlue"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="Shortest" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
+                                                <TextBlock x:Name="ShortestDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" Foreground="DarkGreen"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Longest" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
+                                                <TextBlock x:Name="LongestDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" Foreground="DarkRed"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- Current Patient Outcome Section - Enhanced -->
+                            <Border BorderBrush="#2B5F75"
+                                BorderThickness="2"
+                                Background="White"
+                                Padding="15"
+                                CornerRadius="5">
+                                <StackPanel x:Name="CurrentPatientOutcome">
+                                    <TextBlock Text="Current Patient Analysis" 
+                                           FontWeight="Bold" FontSize="14"
+                                           Foreground="#2B5F75"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,0,0,10"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                            <TextBlock x:Name="CurrentPatientOutcomeTitle"
+                                                   FontWeight="Bold"
+                                                   Foreground="#2B5F75"
+                                                   FontSize="12"
+                                                   Margin="0,0,0,5"/>
+                                            <TextBlock x:Name="CurrentPatientOutcomeDetails"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   LineHeight="16"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                            <TextBlock Text="Progress Summary" FontWeight="Bold" FontSize="12"
+                                                   Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                            <TextBlock x:Name="CurrentPatientProgressSummary"
+                                                   Text="Select a patient to view detailed progress analysis"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="Gray"
+                                                   LineHeight="16"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 3: Treatment Notes -->
+                <StackPanel Grid.Row="3" Margin="0,0,0,10">
+                    <TextBlock Text="Treatment Notes" FontWeight="SemiBold"
                            Margin="0,0,0,5" Foreground="#2B5F75"/>
-                <TextBox x:Name="NoteBox"
+                    <TextBox x:Name="NoteBox"
                          Height="60"
                          TextWrapping="Wrap"
                          AcceptsReturn="True"
                          VerticalScrollBarVisibility="Auto"
                          BorderBrush="#2B5F75"
                          BorderThickness="2"/>
-            </StackPanel>
+                </StackPanel>
 
-            <!-- 4: Chart + Notes Overlay - MUCH BIGGER -->
-            <Border Grid.Row="4"
+                <!-- 5: Chart + Notes Overlay - MUCH BIGGER -->
+                <Border Grid.Row="5"
                     BorderBrush="#2B5F75"
                     BorderThickness="2"
                     Background="White"
                     Padding="10"
                     Margin="0,10">
-                <Grid>
-                    <!-- Chart -->
-                    <lvc:CartesianChart x:Name="PatientProgressChart"
+                    <Grid>
+                        <!-- Chart -->
+                        <lvc:CartesianChart x:Name="PatientProgressChart"
                                          Series="{Binding ScoreSeriesCollection}"
                                          Hoverable="True"
                                          DataTooltip="{StaticResource MyTooltip}"
                                          Background="White"/>
 
-                    <!-- Canvas for Note Overlays - FIXED positioning -->
-                    <Canvas x:Name="ChartNotesCanvas"
+                        <!-- Canvas for Note Overlays - Much more room now -->
+                        <Canvas x:Name="ChartNotesCanvas"
                             Panel.ZIndex="10"
                             Background="Transparent"
                             IsHitTestVisible="False"
                             ClipToBounds="False">
 
-                        <!-- Note Box 1 -->
-                        <Border x:Name="NoteBox1" 
+                            <!-- Note Box 1 -->
+                            <Border x:Name="NoteBox1" 
                                 Canvas.Left="50" 
-                                Canvas.Top="20"
+                                Canvas.Top="30"
                                 Background="#FFFFCC" 
                                 BorderBrush="#DDD" 
                                 BorderThickness="1" 
@@ -240,25 +661,28 @@
                                 Visibility="Collapsed"
                                 MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
                                 Cursor="Hand"
-                                IsHitTestVisible="True">
-                            <StackPanel>
-                                <TextBlock x:Name="NoteTitle1" 
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle1" 
                                           Text="Treatment Started" 
                                           FontWeight="Bold" 
                                           FontSize="10"/>
-                                <TextBlock x:Name="NoteText1" 
+                                    <TextBlock x:Name="NoteText1" 
                                           Text="Initial assessment"
                                           FontSize="9" 
                                           Foreground="DarkGray"
                                           TextWrapping="Wrap"
-                                          MaxWidth="120"/>
-                            </StackPanel>
-                        </Border>
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
 
-                        <!-- Note Box 2 -->
-                        <Border x:Name="NoteBox2" 
-                                Canvas.Left="200" 
-                                Canvas.Top="60"
+                            <!-- Note Box 2 -->
+                            <Border x:Name="NoteBox2" 
+                                Canvas.Left="250" 
+                                Canvas.Top="80"
                                 Background="#E6F3FF" 
                                 BorderBrush="#DDD" 
                                 BorderThickness="1" 
@@ -267,25 +691,28 @@
                                 Visibility="Collapsed"
                                 MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
                                 Cursor="Hand"
-                                IsHitTestVisible="True">
-                            <StackPanel>
-                                <TextBlock x:Name="NoteTitle2" 
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle2" 
                                           Text="Medication Change" 
                                           FontWeight="Bold" 
                                           FontSize="10"/>
-                                <TextBlock x:Name="NoteText2" 
+                                    <TextBlock x:Name="NoteText2" 
                                           Text="Dosage adjusted"
                                           FontSize="9" 
                                           Foreground="DarkGray"
                                           TextWrapping="Wrap"
-                                          MaxWidth="120"/>
-                            </StackPanel>
-                        </Border>
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
 
-                        <!-- Note Box 3 -->
-                        <Border x:Name="NoteBox3" 
-                                Canvas.Left="350" 
-                                Canvas.Top="40"
+                            <!-- Note Box 3 -->
+                            <Border x:Name="NoteBox3" 
+                                Canvas.Left="450" 
+                                Canvas.Top="50"
                                 Background="#F0F8E6" 
                                 BorderBrush="#DDD" 
                                 BorderThickness="1" 
@@ -294,231 +721,200 @@
                                 Visibility="Collapsed"
                                 MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
                                 Cursor="Hand"
-                                IsHitTestVisible="True">
-                            <StackPanel>
-                                <TextBlock x:Name="NoteTitle3" 
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle3" 
                                           Text="Therapy Session" 
                                           FontWeight="Bold" 
                                           FontSize="10"/>
-                                <TextBlock x:Name="NoteText3" 
+                                    <TextBlock x:Name="NoteText3" 
                                           Text="CBT intervention"
                                           FontSize="9" 
                                           Foreground="DarkGray"
                                           TextWrapping="Wrap"
-                                          MaxWidth="120"/>
-                            </StackPanel>
-                        </Border>
-                    </Canvas>
-                </Grid>
-            </Border>
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
 
-            <!-- 5: Filter + Export -->
-            <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,10">
-                <TextBlock Text="Filter by Patient ID:" VerticalAlignment="Center"
-                           Margin="0,0,10,0" FontWeight="SemiBold" Foreground="#2B5F75"/>
-                <TextBox x:Name="FilterBox"
-                         Width="150" Height="25"
-                         BorderBrush="#2B5F75" BorderThickness="2"
-                         TextChanged="FilterBox_TextChanged"/>
-                <Button Content="Export to CSV"
-                        Click="ExportToCsv_Click"
-                        Width="100" Height="30"
-                        Background="DarkGreen" Foreground="White"
-                        FontWeight="Bold" Margin="10,0,10,0"
-                        BorderThickness="0" Cursor="Hand"/>
-                <Button Content="Export to PNG"
-                        Click="ExportToPng_Click"
-                        Width="100" Height="30"
-                        Background="DarkCyan" Foreground="White"
-                        FontWeight="Bold" Margin="0,0,10,0"
-                        BorderThickness="0" Cursor="Hand"/>
-                <Button x:Name="btnExportTopPng" Content="All-Time Remissions"
-                        Click="ShowAllTimeRemissions_Click"
-                        Width="140" Height="30"
-                        Background="Purple" Foreground="White"
-                        FontWeight="Bold" BorderThickness="0"
-                        Cursor="Hand"/>
-            </StackPanel>
+                            <!-- Additional Note Boxes for more notes -->
+                            <Border x:Name="NoteBox4" 
+                                Canvas.Left="80" 
+                                Canvas.Top="150"
+                                Background="#FFE6E6" 
+                                BorderBrush="#DDD" 
+                                BorderThickness="1" 
+                                CornerRadius="3"
+                                Padding="8,4"
+                                Visibility="Collapsed"
+                                MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
+                                Cursor="Hand"
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle4" 
+                                          Text="Follow-up" 
+                                          FontWeight="Bold" 
+                                          FontSize="10"/>
+                                    <TextBlock x:Name="NoteText4" 
+                                          Text="Progress review"
+                                          FontSize="9" 
+                                          Foreground="DarkGray"
+                                          TextWrapping="Wrap"
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
 
-            <!-- 6: Clinical Metrics - PROPERLY STRUCTURED -->
-            <Border Grid.Row="6"
-                    x:Name="MetricsGrid"
+                            <Border x:Name="NoteBox5" 
+                                Canvas.Left="320" 
+                                Canvas.Top="180"
+                                Background="#E6FFE6" 
+                                BorderBrush="#DDD" 
+                                BorderThickness="1" 
+                                CornerRadius="3"
+                                Padding="8,4"
+                                Visibility="Collapsed"
+                                MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
+                                Cursor="Hand"
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle5" 
+                                          Text="Milestone" 
+                                          FontWeight="Bold" 
+                                          FontSize="10"/>
+                                    <TextBlock x:Name="NoteText5" 
+                                          Text="Significant improvement"
+                                          FontSize="9" 
+                                          Foreground="DarkGray"
+                                          TextWrapping="Wrap"
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="NoteBox6" 
+                                Canvas.Left="500" 
+                                Canvas.Top="140"
+                                Background="#F0E6FF" 
+                                BorderBrush="#DDD" 
+                                BorderThickness="1" 
+                                CornerRadius="3"
+                                Padding="8,4"
+                                Visibility="Collapsed"
+                                MouseLeftButtonUp="NoteBox_MouseLeftButtonUp"
+                                Cursor="Hand"
+                                IsHitTestVisible="True"
+                                Width="140"
+                                Height="50">
+                                <StackPanel>
+                                    <TextBlock x:Name="NoteTitle6" 
+                                          Text="Assessment" 
+                                          FontWeight="Bold" 
+                                          FontSize="10"/>
+                                    <TextBlock x:Name="NoteText6" 
+                                          Text="Regular check-in"
+                                          FontSize="9" 
+                                          Foreground="DarkGray"
+                                          TextWrapping="Wrap"
+                                          TextTrimming="CharacterEllipsis"
+                                          MaxHeight="30"/>
+                                </StackPanel>
+                            </Border>
+                        </Canvas>
+                    </Grid>
+                </Border>
+
+                <!-- 6: Data Grid - FIXED HEIGHT with scrolling -->
+                <Border Grid.Row="6" 
                     BorderBrush="#2B5F75"
                     BorderThickness="2"
-                    Background="#E6F3FF"
-                    Padding="8"
+                    Background="White"
                     Margin="0,5">
-                <StackPanel>
-                    <!-- Header -->
-                    <TextBlock Text="BDI-II Clinical Outcomes"
-                               FontSize="13" FontWeight="Bold"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,6"
-                               Foreground="#2B5F75"/>
+                    <DataGrid x:Name="ScoresGrid"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          AlternatingRowBackground="#F0F8FF"
+                          ColumnHeaderHeight="35"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="All"
+                          Background="White"
+                          MouseDoubleClick="ScoresGrid_MouseDoubleClick_1"
+                          SelectionChanged="ScoresGrid_SelectionChanged"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
 
-                    <!-- Metrics in 2 rows for better space usage -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Row 1: Response Rate & Remission Rate -->
-                        <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,4">
-                            <TextBlock Text="Response Rate (≥50% improvement)" FontWeight="SemiBold" FontSize="10"
-                                       HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock x:Name="ResponseRateText" Text="0.0%" FontSize="18" FontWeight="Bold"
-                                           Foreground="Green" Margin="0,0,5,0"/>
-                                <TextBlock x:Name="ResponseCountText" Text="(0/0)" FontSize="9" Foreground="Gray"
-                                           VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,4">
-                            <TextBlock Text="Remission Rate (score &lt;14)" FontWeight="SemiBold" FontSize="10"
-                                       HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock x:Name="RemissionRateText" Text="0.0%" FontSize="18" FontWeight="Bold"
-                                           Foreground="Blue" Margin="0,0,5,0"/>
-                                <TextBlock x:Name="RemissionCountText" Text="(0/0)" FontSize="9" Foreground="Gray"
-                                           VerticalAlignment="Bottom" Margin="0,0,0,2"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <!-- Row 2: Average Improvement & Eligible Patients -->
-                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,4,8,0">
-                            <TextBlock Text="Average Improvement (all patients)" FontWeight="SemiBold" FontSize="10"
-                                       HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                            <TextBlock x:Name="AverageImprovementText" Text="0.0%" FontSize="18" FontWeight="Bold"
-                                       HorizontalAlignment="Center" Foreground="Orange"/>
-                        </StackPanel>
-
-                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,4,0,0">
-                            <TextBlock Text="Eligible Patients (≥14, 2+ assessments)" FontWeight="SemiBold" FontSize="10"
-                                       HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                            <TextBlock x:Name="EligiblePatientsText" Text="0" FontSize="18" FontWeight="Bold"
-                                       HorizontalAlignment="Center" Foreground="Purple"/>
-                        </StackPanel>
-
-                        <!-- Buttons - Vertical layout on the right -->
-                        <StackPanel Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Orientation="Vertical" 
-                                    VerticalAlignment="Center" Margin="15,0,0,0">
-                            <Button Content="Calculate" Click="CalculateMetrics_Click"
-                                    Width="80" Height="22" Margin="0,0,0,3"
-                                    Background="#2B5F75" Foreground="White" FontWeight="Bold" 
-                                    BorderThickness="0" Cursor="Hand" FontSize="9"/>
-                            <Button Content="Export" Click="ExportMetricsReport_Click"
-                                    Width="80" Height="22"
-                                    Background="DarkGreen" Foreground="White" FontWeight="Bold" 
-                                    BorderThickness="0" Cursor="Hand" FontSize="9"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- Current Patient Outcome Section - Compact -->
-                    <Border BorderBrush="#2B5F75"
-                            BorderThickness="1"
-                            Background="White"
-                            Padding="5"
-                            Margin="0,6,0,0">
-                        <StackPanel x:Name="CurrentPatientOutcome" Visibility="Collapsed">
-                            <TextBlock x:Name="CurrentPatientOutcomeTitle"
-                                       FontWeight="Bold"
-                                       Foreground="#2B5F75"
-                                       FontSize="10"
-                                       Margin="0,0,0,2"/>
-                            <TextBlock x:Name="CurrentPatientOutcomeDetails"
-                                       FontSize="9"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Border>
-
-            <!-- 7: Data Grid -->
-            <DataGrid x:Name="ScoresGrid"
-                      Grid.Row="7"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      AlternatingRowBackground="#F0F8FF"
-                      ColumnHeaderHeight="35"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="All"
-                      Background="White"
-                      MouseDoubleClick="ScoresGrid_MouseDoubleClick_1"
-                      SelectionChanged="ScoresGrid_SelectionChanged"
-                      VirtualizingPanel.IsVirtualizing="True"
-                      VirtualizingPanel.VirtualizationMode="Recycling">
-
-                <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
-                        <Setter Property="MinHeight" Value="30"/>
-                        <Setter Property="MaxHeight" Value="100"/>
-                        <Setter Property="Height" Value="Auto"/>
-                    </Style>
-                </DataGrid.RowStyle>
-
-                <DataGrid.ColumnHeaderStyle>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#2B5F75"/>
-                        <Setter Property="Foreground" Value="White"/>
-                        <Setter Property="FontWeight" Value="Bold"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                        <Setter Property="Padding" Value="8"/>
-                    </Style>
-                </DataGrid.ColumnHeaderStyle>
-
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Patient ID"
-                                        Binding="{Binding PatientId}"
-                                        Width="120" MinWidth="80"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="Date"
-                                        Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}"
-                                        Width="120" MinWidth="80"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="PHQ-9"
-                                        Binding="{Binding PHQ9, Converter={StaticResource ScoreConverter}}"
-                                        Width="80" MinWidth="50"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="GAD-7"
-                                        Binding="{Binding GAD7, Converter={StaticResource ScoreConverter}}"
-                                        Width="80" MinWidth="50"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="BDI-II"
-                                        Binding="{Binding BDI2, Converter={StaticResource ScoreConverter}}"
-                                        Width="80" MinWidth="50"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="PCL-5"
-                                        Binding="{Binding PCL5, Converter={StaticResource ScoreConverter}}"
-                                        Width="80" MinWidth="50"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-                    <DataGridTextColumn Header="Y-BOCS"
-                                        Binding="{Binding YBOCS, Converter={StaticResource ScoreConverter}}"
-                                        Width="80" MinWidth="50"
-                                        ElementStyle="{StaticResource CenteredCellStyle}"/>
-
-                    <DataGridTextColumn Header="Treatment Notes"
-                                        Binding="{Binding Note}"
-                                        Width="*" MinWidth="200">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                <Setter Property="Padding" Value="5"/>
-                                <Setter Property="VerticalAlignment" Value="Top"/>
-                                <Setter Property="MaxHeight" Value="80"/>
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="MinHeight" Value="35"/>
+                                <Setter Property="Height" Value="Auto"/>
                             </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                </DataGrid.Columns>
-            </DataGrid>
-        </Grid>
+                        </DataGrid.RowStyle>
+
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#2B5F75"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                <Setter Property="Padding" Value="8"/>
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Patient ID"
+                                            Binding="{Binding PatientId}"
+                                            Width="120" MinWidth="80"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="Date"
+                                            Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}"
+                                            Width="120" MinWidth="80"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="PHQ-9"
+                                            Binding="{Binding PHQ9, Converter={StaticResource ScoreConverter}}"
+                                            Width="80" MinWidth="50"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="GAD-7"
+                                            Binding="{Binding GAD7, Converter={StaticResource ScoreConverter}}"
+                                            Width="80" MinWidth="50"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="BDI-II"
+                                            Binding="{Binding BDI2, Converter={StaticResource ScoreConverter}}"
+                                            Width="80" MinWidth="50"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="PCL-5"
+                                            Binding="{Binding PCL5, Converter={StaticResource ScoreConverter}}"
+                                            Width="80" MinWidth="50"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+                            <DataGridTextColumn Header="Y-BOCS"
+                                            Binding="{Binding YBOCS, Converter={StaticResource ScoreConverter}}"
+                                            Width="80" MinWidth="50"
+                                            ElementStyle="{StaticResource CenteredCellStyle}"/>
+
+                            <DataGridTextColumn Header="Treatment Notes"
+                                            Binding="{Binding Note}"
+                                            Width="*" MinWidth="300">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                        <Setter Property="Padding" Value="8"/>
+                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                        <Setter Property="LineHeight" Value="16"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </Grid>
+        </ScrollViewer>
 
         <!-- Export Layout Panel - SIMPLE FIXED WIDTH + SCROLLVIEWER -->
         <Border x:Name="ExportLayout"

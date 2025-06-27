@@ -451,83 +451,90 @@ namespace PatientTrackerWPF
 
         private void UpdateChartNotesForPatient(string patientId)
         {
-            // Clear everything (keep your approach)
             ChartNotesCanvas.Children.Clear();
 
             if (!patientData.ContainsKey(patientId)) return;
-            var scores = patientData[patientId].OrderBy(s => s.Date).ToList();
-            var notes = scores.Where(s => !string.IsNullOrWhiteSpace(s.Note)).ToList();
+            var notes = patientData[patientId]
+                .Where(s => !string.IsNullOrWhiteSpace(s.Note))
+                .OrderBy(s => s.Date)
+                .ToList();
+
             if (notes.Count == 0) return;
 
             var axis = PatientProgressChart.AxisX[0];
             double chartW = PatientProgressChart.ActualWidth;
             double chartH = PatientProgressChart.ActualHeight;
 
-            // IMPROVED: Add boundary checking and better sizing
-            const double noteWidth = 150;
+            const double noteWidth = 140;
             const double noteHeight = 50;
             const double margin = 10;
+            const int maxNotesPerRow = 4;
 
             for (int i = 0; i < notes.Count; i++)
             {
-                var e = notes[i];
+                var note = notes[i];
 
-                // Keep your elegant date-to-pixel mapping
-                double x = (e.Date.Ticks - axis.MinValue)
-                           / (double)(axis.MaxValue - axis.MinValue)
-                           * chartW;
+                // Calculate position
+                double dateX = (note.Date.Ticks - axis.MinValue) / (double)(axis.MaxValue - axis.MinValue) * chartW;
 
-                // IMPROVED: Better vertical positioning with boundary checking
-                int row = i / 4; // 4 notes per row max
-                int col = i % 4;
-                double y = margin + row * (noteHeight + 5);
+                // Smart positioning to avoid overlaps
+                int row = i / maxNotesPerRow;
+                int col = i % maxNotesPerRow;
 
-                // IMPROVED: Adjust X position within each row to prevent overlaps
-                x = x + (col - 2) * (noteWidth / 4); // Spread notes around the date position
+                double x = Math.Max(margin, Math.Min(chartW - noteWidth - margin,
+                    dateX - noteWidth/2 + (col - 2) * (noteWidth * 0.3)));
+                double y = margin + row * (noteHeight + 10);
 
-                // IMPROVED: Keep notes within chart boundaries
-                if (x < margin) x = margin;
-                if (x + noteWidth > chartW - margin) x = chartW - noteWidth - margin;
                 if (y + noteHeight > chartH - margin) y = chartH - noteHeight - margin;
 
-                var box = new Border
-                {
-                    Background = new SolidColorBrush(GetNoteBoxColor(i)),
-                    BorderBrush = Brushes.Gray,
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(6),
-                    Tag = e.Note,
-                    Cursor = Cursors.Hand,
-                    // IMPROVED: Set fixed size to prevent overlaps
-                    Width = noteWidth,
-                    Height = noteHeight
-                };
-                box.MouseLeftButtonUp += (s, _) => MessageBox.Show(e.Note, "Full Treatment Note");
+                var noteBox = CreateNoteBox(note, noteWidth, noteHeight, i);
 
-                var sp = new StackPanel();
-                sp.Children.Add(new TextBlock
-                {
-                    Text = e.Date.ToString("MMM dd"),
-                    FontWeight = FontWeights.Bold,
-                    FontSize = 10,
-                    Margin = new Thickness(0, 0, 0, 2)
-                });
-                sp.Children.Add(new TextBlock
-                {
-                    Text = e.Note.Length > 35 ? e.Note.Substring(0, 35) + "…" : e.Note,
-                    FontSize = 9,
-                    TextWrapping = TextWrapping.Wrap,
-                    MaxWidth = noteWidth - 12, // Account for padding
-                    MaxHeight = 30, // IMPROVED: Limit height
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                });
-                box.Child = sp;
-
-                Canvas.SetLeft(box, x);
-                Canvas.SetTop(box, y);
-                ChartNotesCanvas.Children.Add(box);
+                Canvas.SetLeft(noteBox, x);
+                Canvas.SetTop(noteBox, y);
+                ChartNotesCanvas.Children.Add(noteBox);
             }
+        }
+
+        private Border CreateNoteBox(ScoreEntry note, double width, double height, int colorIndex)
+        {
+            var box = new Border
+            {
+                Background = new SolidColorBrush(GetNoteBoxColor(colorIndex)),
+                BorderBrush = Brushes.Gray,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+         /*       Padding = new Thickness(8, 4),*/
+                Width = width,
+                Height = height,
+                Cursor = Cursors.Hand
+            };
+
+            box.MouseLeftButtonUp += (s, e) => MessageBox.Show(note.Note, "Treatment Note");
+
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = note.Date.ToString("MMM dd"),
+                FontWeight = FontWeights.Bold,
+                FontSize = 10,
+                Margin = new Thickness(0, 0, 0, 2)
+            });
+
+            // TRUNCATE TO 20 CHARACTERS
+            string displayText = note.Note.Length > 20 ? note.Note.Substring(0, 20) + "..." : note.Note;
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = displayText,
+                FontSize = 9,
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Brushes.DarkGray,
+                MaxHeight = 30
+            });
+
+            box.Child = stack;
+            return box;
         }
 
         // IMPROVED: Better color variation (keep your approach but with more colors)
@@ -609,6 +616,25 @@ namespace PatientTrackerWPF
             {
                 MessageBox.Show($"Error calculating metrics: {ex.Message}", "Error",
                                MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        private bool isMetricsExpanded = false;
+
+        private void ToggleMetrics_Click(object sender, MouseButtonEventArgs e)
+        {
+            isMetricsExpanded = !isMetricsExpanded;
+
+            if (isMetricsExpanded)
+            {
+                MetricsContent.Visibility = Visibility.Visible;
+                MetricsToggleIcon.Text = "▼";
+                QuickStats.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                MetricsContent.Visibility = Visibility.Collapsed;
+                MetricsToggleIcon.Text = "▶";
+                QuickStats.Visibility = Visibility.Visible;
             }
         }
 
@@ -755,26 +781,25 @@ namespace PatientTrackerWPF
 
             try
             {
-                // ────────────────────────────────────────────────────────────────────────
                 // 1) Populate export panel
                 ExportPatientId.Text = $"Patient ID: {patientId}";
-                ExportDate.Text      = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
+                ExportDate.Text = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
 
                 var exportData = patientData[patientId]
                     .OrderBy(s => s.Date)
                     .Select(s => new {
                         Date = s.Date.ToString("yyyy-MM-dd"),
-                        PHQ9 = s.PHQ9  >= 0 ? s.PHQ9.ToString() : "—",
-                        GAD7 = s.GAD7  >= 0 ? s.GAD7.ToString() : "—",
-                        BDI2 = s.BDI2  >= 0 ? s.BDI2.ToString() : "—",
-                        PCL5 = s.PCL5  >= 0 ? s.PCL5.ToString() : "—",
+                        PHQ9 = s.PHQ9 >= 0 ? s.PHQ9.ToString() : "—",
+                        GAD7 = s.GAD7 >= 0 ? s.GAD7.ToString() : "—",
+                        BDI2 = s.BDI2 >= 0 ? s.BDI2.ToString() : "—",
+                        PCL5 = s.PCL5 >= 0 ? s.PCL5.ToString() : "—",
                         YBOCS = s.YBOCS >= 0 ? s.YBOCS.ToString() : "—",
                         Note = s.Note ?? ""
                     })
                     .ToList();
                 ExportScoreGrid.ItemsSource = exportData;
 
-                // 2) Snapshot the live chart into the export image slot
+                // 2) Capture chart image
                 PatientProgressChart.UpdateLayout();
                 var chartBmp = new RenderTargetBitmap(
                     (int)PatientProgressChart.ActualWidth,
@@ -783,35 +808,40 @@ namespace PatientTrackerWPF
                 chartBmp.Render(PatientProgressChart);
                 ExportChartImage.Source = chartBmp;
 
-                // 3) Reveal the export panel (so Measure/Arrange will work)
+                // 3) Show and measure export layout
                 ExportLayout.Visibility = Visibility.Visible;
-                // let WPF catch up
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-                // ────────────────────────────────────────────────────────────────────────
-                // 4) Measure & Arrange at your fixed design width
-                double designWidth = (double)FindResource("ReportWidth");
+                // 4) SIMPLE: Use the resource width and measure height naturally
+                double designWidth = (double)FindResource("ReportWidth"); // 900px
                 ExportLayout.Measure(new Size(designWidth, double.PositiveInfinity));
-                ExportLayout.Arrange(new Rect(0, 0,
-                                              ExportLayout.DesiredSize.Width,
-                                              ExportLayout.DesiredSize.Height));
+                ExportLayout.Arrange(new Rect(0, 0, designWidth, ExportLayout.DesiredSize.Height));
                 ExportLayout.UpdateLayout();
 
-                // 5) Render at 300 DPI
-                const double PRINT_DPI = 300.0;
-                const double SCREEN_DPI = 96.0;
-                double scale = PRINT_DPI / SCREEN_DPI;
+                // Wait for final layout
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
 
-                int px = (int)Math.Ceiling(ExportLayout.ActualWidth  * scale);
-                int py = (int)Math.Ceiling(ExportLayout.ActualHeight * scale);
+                // 5) SIMPLE: Render at screen resolution first, then scale
+                double finalWidth = ExportLayout.ActualWidth;
+                double finalHeight = ExportLayout.ActualHeight;
 
-                var rtb = new RenderTargetBitmap(px, py, PRINT_DPI, PRINT_DPI, PixelFormats.Pbgra32);
+                // Create high-res bitmap
+                const double scale = 300.0 / 96.0; // 300 DPI
+                int pixelWidth = (int)(finalWidth * scale);
+                int pixelHeight = (int)(finalHeight * scale);
+
+                var rtb = new RenderTargetBitmap(pixelWidth, pixelHeight, 300, 300, PixelFormats.Pbgra32);
+
+                // Simple transform and render
+                var transform = new ScaleTransform(scale, scale);
+                ExportLayout.RenderTransform = transform;
                 rtb.Render(ExportLayout);
+                ExportLayout.RenderTransform = null; // Reset transform
 
-                // 6) Save via standard SaveFileDialog
+                // 6) Save file
                 var dlg = new SaveFileDialog
                 {
-                    Filter   = "PNG Image|*.png",
+                    Filter = "PNG Image|*.png",
                     FileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
                 };
 
@@ -821,7 +851,7 @@ namespace PatientTrackerWPF
                     encoder.Frames.Add(BitmapFrame.Create(rtb));
                     using var fs = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write);
                     encoder.Save(fs);
-                    MessageBox.Show($"Export complete:\n{dlg.FileName}", "Success",
+                    MessageBox.Show($"Report exported successfully:\n{dlg.FileName}", "Export Complete",
                                     MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
@@ -839,47 +869,6 @@ namespace PatientTrackerWPF
         }
 
 
-        //private void ExportProfessionalPngReport(string patientId)
-        //{
-        //    const double PRINT_DPI = 300.0;
-        //    const double SCREEN_DPI = 96.0;
-        //    double scale = PRINT_DPI / SCREEN_DPI;
-
-        //    // compute high-res pixel dimensions
-        //    double w = ExportLayout.ActualWidth;
-        //    double h = ExportLayout.ActualHeight;
-        //    int px = (int)Math.Ceiling(w * scale);
-        //    int py = (int)Math.Ceiling(h * scale);
-
-        //    // prepare RenderTargetBitmap at 300 DPI
-        //    var rtb = new RenderTargetBitmap(px, py, PRINT_DPI, PRINT_DPI, PixelFormats.Pbgra32);
-
-        //    // draw ExportLayout into a DrawingVisual with the scale transform
-        //    var dv = new DrawingVisual();
-        //    using (var dc = dv.RenderOpen())
-        //    {
-        //        dc.PushTransform(new ScaleTransform(scale, scale));
-        //        dc.DrawRectangle(new VisualBrush(ExportLayout), null, new Rect(0, 0, w, h));
-        //        dc.Pop();
-        //    }
-        //    rtb.Render(dv);
-
-        //    // save
-        //    var dlg = new SaveFileDialog
-        //    {
-        //        Filter   = "PNG Image (Print Quality)|*.png",
-        //        FileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
-        //    };
-        //    if (dlg.ShowDialog() != true) return;
-
-        //    var encoder = new PngBitmapEncoder();
-        //    encoder.Frames.Add(BitmapFrame.Create(rtb));
-        //    using var fs = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write);
-        //    encoder.Save(fs);
-
-        //    MessageBox.Show($"High-res report saved:\n{dlg.FileName}", "Export Complete",
-        //                    MessageBoxButton.OK, MessageBoxImage.Information);
-        //}
 
 
 
