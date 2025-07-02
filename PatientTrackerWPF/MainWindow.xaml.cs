@@ -36,13 +36,13 @@ namespace PatientTrackerWPF
         private ClinicalMetricsService.ClinicalMetrics? currentMetrics;
         private List<ScoreEntry> currentPatientEntries = new List<ScoreEntry>();
         // Constants pulled from resources at runtime
-        private double ReportWidth => (double)FindResource("ReportWidth");
+/*        private double ReportWidth => (double)FindResource("ReportWidth");
         private int ReportDpi => (int)FindResource("ReportDpi");
         private double[] HistoryColumnWidths
           => ((double[])FindResource("HistoryColumnWidths")).ToArray();
         private Brush PrimaryBrush => (Brush)FindResource("PrimaryBrush");
         private Brush SecondaryBrush => (Brush)FindResource("SecondaryBrush");
-        private Brush AccentBrush => (Brush)FindResource("AccentBrush");
+        private Brush AccentBrush => (Brush)FindResource("AccentBrush");*/
 
         // ─── Chart Collections ────────────────────────────────────────────────
         public SeriesCollection ScoreSeriesCollection { get; set; }
@@ -55,6 +55,12 @@ namespace PatientTrackerWPF
         public MainWindow()
         {
             InitializeComponent();
+
+            // Added  ScoreConverter to resources programmatically if XAML fails
+            if (!Resources.Contains("ScoreConverter"))
+            {
+                Resources.Add("ScoreConverter", new ScoreConverter());
+            }
             DataContext = this;
             InitializeChart();
             SetupResponsiveLayout();
@@ -170,7 +176,7 @@ namespace PatientTrackerWPF
             ScoresGrid.ItemsSource = new List<ScoreEntry>();
         }
 
-        // ─── Add Score Click ──────────────────────────────────────────────────
+
         // ─── Add Score Click with Score Validation ──────────────────────────────────────────────────
         private void AddScore_Click(object sender, RoutedEventArgs e)
         {
@@ -312,7 +318,7 @@ namespace PatientTrackerWPF
                 Bdi2Values.Clear(); Pcl5Values.Clear();
                 YbocsValues.Clear();
 
-                // FIXED: Add null checks for chart and axis
+                // Add null checks for chart and axis
                 if (PatientProgressChart?.AxisX == null || PatientProgressChart.AxisX.Count == 0)
                 {
                     return; // Exit safely if chart is not ready
@@ -325,7 +331,7 @@ namespace PatientTrackerWPF
                     PatientProgressChart.AxisX[0].MinValue = t.AddDays(-7).Ticks;
                     PatientProgressChart.AxisX[0].MaxValue = t.AddDays(7).Ticks;
 
-                    // FIXED: Check separator exists before setting
+                    //Check separator exists before setting
                     if (PatientProgressChart.AxisX[0].Separator != null)
                     {
                         PatientProgressChart.AxisX[0].Separator.Step = TimeSpan.FromDays(1).Ticks;
@@ -333,15 +339,26 @@ namespace PatientTrackerWPF
                     return;
                 }
 
-                // Add data points
+                //  Only add data points when scores exist (>= 0)
                 foreach (var entry in scores)
                 {
-                    Phq9Values.Add(new DateTimePoint(entry.Date, entry.PHQ9 >= 0 ? entry.PHQ9 : 0));
-                    Gad7Values.Add(new DateTimePoint(entry.Date, entry.GAD7 >= 0 ? entry.GAD7 : 0));
-                    Bdi2Values.Add(new DateTimePoint(entry.Date, entry.BDI2 >= 0 ? entry.BDI2 : 0));
-                    Pcl5Values.Add(new DateTimePoint(entry.Date, entry.PCL5 >= 0 ? entry.PCL5 : 0));
-                    YbocsValues.Add(new DateTimePoint(entry.Date, entry.YBOCS >= 0 ? entry.YBOCS : 0));
+                    // Only add data points for actual scores, skip -1 values
+                    if (entry.PHQ9 >= 0)
+                        Phq9Values.Add(new DateTimePoint(entry.Date, entry.PHQ9));
+
+                    if (entry.GAD7 >= 0)
+                        Gad7Values.Add(new DateTimePoint(entry.Date, entry.GAD7));
+
+                    if (entry.BDI2 >= 0)
+                        Bdi2Values.Add(new DateTimePoint(entry.Date, entry.BDI2));
+
+                    if (entry.PCL5 >= 0)
+                        Pcl5Values.Add(new DateTimePoint(entry.Date, entry.PCL5));
+
+                    if (entry.YBOCS >= 0)
+                        YbocsValues.Add(new DateTimePoint(entry.Date, entry.YBOCS));
                 }
+
 
                 // Set axis range with minimal padding
                 var firstDate = scores.First().Date;
@@ -537,7 +554,6 @@ namespace PatientTrackerWPF
             return box;
         }
 
-        // IMPROVED: Better color variation (keep your approach but with more colors)
         private Color GetNoteBoxColor(int index)
         {
             var colors = new[]
@@ -648,6 +664,11 @@ namespace PatientTrackerWPF
 
             AverageImprovementText.Text = $"{metrics.AverageImprovement:F1}%";
             EligiblePatientsText.Text = metrics.PatientsWithMultipleAssessments.ToString();
+
+
+            QuickResponseRate.Text = $"{metrics.ResponseRate:F1}%";
+            QuickRemissionRate.Text = $"{metrics.RemissionRate:F1}%";
+        
 
             // Color coding
             ResponseRateText.Foreground = metrics.ResponseRate >= 50 ? Brushes.Green :
@@ -765,109 +786,89 @@ namespace PatientTrackerWPF
 
 
         //Export to PNG ──────────────────────────────────────────────────────
-        // FIXED Export Method - Capture the FULL ExportLayout with background
-        private async void ExportToPng_Click(object sender, RoutedEventArgs e)
+
+        private void ExportToPng_Click(object sender, RoutedEventArgs e)
         {
-            var patientId = PatientSelector.Text?.Trim();
+            string patientId = PatientSelector.Text?.Trim();
             if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
             {
                 MessageBox.Show("Please select a valid patient.");
                 return;
             }
-
-            var btn = sender as Button;
-            if (btn != null) btn.IsEnabled = false;
-            Mouse.OverrideCursor = Cursors.Wait;
-
             try
             {
-                // 1) Populate export panel
+                // Step 1: Set export header information
                 ExportPatientId.Text = $"Patient ID: {patientId}";
                 ExportDate.Text = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
-
-                var exportData = patientData[patientId]
-                    .OrderBy(s => s.Date)
-                    .Select(s => new {
-                        Date = s.Date.ToString("yyyy-MM-dd"),
-                        PHQ9 = s.PHQ9 >= 0 ? s.PHQ9.ToString() : "—",
-                        GAD7 = s.GAD7 >= 0 ? s.GAD7.ToString() : "—",
-                        BDI2 = s.BDI2 >= 0 ? s.BDI2.ToString() : "—",
-                        PCL5 = s.PCL5 >= 0 ? s.PCL5.ToString() : "—",
-                        YBOCS = s.YBOCS >= 0 ? s.YBOCS.ToString() : "—",
-                        Note = s.Note ?? ""
-                    })
-                    .ToList();
+                // Step 2: Create export data with proper property names
+                var patientScores = patientData[patientId].OrderBy(s => s.Date).ToList();
+                var exportData = patientScores.Select(entry => new
+                {
+                    PatientId = entry.PatientId,
+                    Date = entry.Date,
+                    PHQ9 = entry.PHQ9 == -1 ? "—" : entry.PHQ9.ToString(),
+                    GAD7 = entry.GAD7 == -1 ? "—" : entry.GAD7.ToString(),
+                    BDI2 = entry.BDI2 == -1 ? "—" : entry.BDI2.ToString(),
+                    PCL5 = entry.PCL5 == -1 ? "—" : entry.PCL5.ToString(),
+                    YBOCS = entry.YBOCS == -1 ? "—" : entry.YBOCS.ToString(),
+                    Note = entry.Note ?? ""
+                }).ToList();
+                // Step 3: Bind data to export grid
                 ExportScoreGrid.ItemsSource = exportData;
-
-                // 2) Capture chart image
+                // Step 4: Fill notes summary
+                var notesForExport = patientData[patientId]
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Note))
+                    .OrderByDescending(p => p.Date)
+                    .Select(p => $"{p.Date:MMM dd, yyyy}: {p.Note}")
+                    .Take(10);
+                ExportNoteText.Text = notesForExport.Any() ?
+                    string.Join("\n\n", notesForExport) :
+                    "No treatment notes available.";
+                // Step 5: Simple chart capture
                 PatientProgressChart.UpdateLayout();
-                var chartBmp = new RenderTargetBitmap(
-                    (int)PatientProgressChart.ActualWidth,
-                    (int)PatientProgressChart.ActualHeight,
-                    96, 96, PixelFormats.Pbgra32);
-                chartBmp.Render(PatientProgressChart);
-                ExportChartImage.Source = chartBmp;
 
-                // 3) Show and measure export layout
+                double chartWidth = PatientProgressChart.ActualWidth;
+                double chartHeight = PatientProgressChart.ActualHeight;
+
+                if (chartWidth <= 0) chartWidth = 600;
+                if (chartHeight <= 0) chartHeight = 300;
+                var chartBitmap = new RenderTargetBitmap(
+                    (int)chartWidth, (int)chartHeight, 96, 96, PixelFormats.Pbgra32);
+                chartBitmap.Render(PatientProgressChart);
+                ExportChartImage.Source = chartBitmap;
+                // Step 6: Show and update export layout
                 ExportLayout.Visibility = Visibility.Visible;
-                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
-
-                // 4) SIMPLE: Use the resource width and measure height naturally
-                double designWidth = (double)FindResource("ReportWidth"); // 900px
-                ExportLayout.Measure(new Size(designWidth, double.PositiveInfinity));
-                ExportLayout.Arrange(new Rect(0, 0, designWidth, ExportLayout.DesiredSize.Height));
                 ExportLayout.UpdateLayout();
 
-                // Wait for final layout
-                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+                // Force grid update
+                ExportScoreGrid.UpdateLayout();
 
-                // 5) SIMPLE: Render at screen resolution first, then scale
-                double finalWidth = ExportLayout.ActualWidth;
-                double finalHeight = ExportLayout.ActualHeight;
-
-                // Create high-res bitmap
-                const double scale = 300.0 / 96.0; // 300 DPI
-                int pixelWidth = (int)(finalWidth * scale);
-                int pixelHeight = (int)(finalHeight * scale);
-
-                var rtb = new RenderTargetBitmap(pixelWidth, pixelHeight, 300, 300, PixelFormats.Pbgra32);
-
-                // Simple transform and render
-                var transform = new ScaleTransform(scale, scale);
-                ExportLayout.RenderTransform = transform;
-                rtb.Render(ExportLayout);
-                ExportLayout.RenderTransform = null; // Reset transform
-
-                // 6) Save file
-                var dlg = new SaveFileDialog
+                // Wait for rendering
+                Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+                System.Threading.Thread.Sleep(300);
+                // Step 7: Render final export
+                var exportBitmap = new RenderTargetBitmap(1600, 1200, 96, 96, PixelFormats.Pbgra32);
+                exportBitmap.Render(ExportLayout);
+                // Step 8: Save file
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(exportBitmap));
+                string fileName = $"PatientReport{patientId}{DateTime.Now:yyyyMMdd_HHmmss}.png";
+                using (var fileStream = new FileStream(fileName, FileMode.Create))
                 {
-                    Filter = "PNG Image|*.png",
-                    FileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmmss}.png"
-                };
-
-                if (dlg.ShowDialog() == true)
-                {
-                    var encoder = new PngBitmapEncoder();
-                    encoder.Frames.Add(BitmapFrame.Create(rtb));
-                    using var fs = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write);
-                    encoder.Save(fs);
-                    MessageBox.Show($"Report exported successfully:\n{dlg.FileName}", "Export Complete",
-                                    MessageBoxButton.OK, MessageBoxImage.Information);
+                    encoder.Save(fileStream);
                 }
+                // Step 9: Hide export layout
+                ExportLayout.Visibility = Visibility.Collapsed;
+                MessageBox.Show($"Export completed successfully!\n\nFile: {fileName}\nLocation: {System.IO.Path.GetFullPath(fileName)}",
+                               "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Export failed: {ex.Message}", "Error",
-                                MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                Mouse.OverrideCursor = null;
-                if (btn != null) btn.IsEnabled = true;
                 ExportLayout.Visibility = Visibility.Collapsed;
+                MessageBox.Show($"Export failed: {ex.Message}", "Export Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
 
 
 
@@ -955,7 +956,7 @@ namespace PatientTrackerWPF
 
         private void ScoresGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Handle grid selection if needed
+           
         }
     }
 }

@@ -96,7 +96,7 @@
                 <!-- Export Button -->
                 <StackPanel Grid.Column="4" Orientation="Vertical">
                     <Button x:Name="ExportRemissionBtn" Content="Export Report" 
-                            Click="ExportRemissionReport_Click" Height="30" Width="120" 
+                            Click="ExportRemissionReport_Click" Height="43" Width="120" 
                             Background="#2B5F75" Foreground="White" FontWeight="Bold"
                             BorderThickness="0" Cursor="Hand">
                         <Button.Style>

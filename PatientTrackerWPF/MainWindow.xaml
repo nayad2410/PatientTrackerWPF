@@ -1013,6 +1013,23 @@
                     </StackPanel>
                 </Border>
 
+                <Border BorderBrush="#DDD" BorderThickness="1" Padding="15" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Recent Treatment Notes"
+                   FontSize="16" FontWeight="Bold"
+                   Foreground="{StaticResource PrimaryBrush}" 
+                   Margin="0,0,0,15"/>
+                        <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="ExportNoteText"
+                       Text="No treatment notes available."
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       LineHeight="16"
+                       Foreground="Black"/>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
                 <!-- Data Grid Section -->
                 <Border BorderBrush="#DDD" BorderThickness="1" Padding="15">
                     <StackPanel>
