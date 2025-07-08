@@ -77,7 +77,8 @@ namespace PatientTrackerWPF.Models
         public string? UpdatedBy { get; set; }
 
         // Navigation property for audit trails
-        public virtual ICollection<ScoreEntry> ScoreEntriesCreated { get; set; } = new List<ScoreEntry>();
+        public virtual ICollection<ScoreEntry>? ScoreEntriesCreated { get; set; } = new List<ScoreEntry>();
+        public virtual ICollection<ScoreEntry>? ScoreEntriesUpdated { get; set; } = new List<ScoreEntry>();
 
         // Computed properties
         [NotMapped]

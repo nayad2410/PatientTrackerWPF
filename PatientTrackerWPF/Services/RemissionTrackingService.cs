@@ -40,14 +40,14 @@ namespace PatientTrackerWPF.Services
             {
                 var patientId = kvp.Key;
                 var entries = kvp.Value
-                    .Where(e => e.BDI2 > 0) // Only entries with BDI-II scores
+                    .Where(e => e.BDI2.HasValue && e.BDI2.Value >= 0) // FIXED: Handle nullable
                     .OrderBy(e => e.Date)
                     .ToList();
 
                 if (entries.Count < 2) continue; // Need at least 2 assessments
 
                 var baseline = entries.First();
-                if (baseline.BDI2 < 14) continue; // Must start with moderate depression or higher
+                if (baseline.BDI2.Value < 14) continue; // FIXED: Use .Value
 
                 // Track remission periods for this patient
                 var remissionPeriods = FindRemissionPeriods(patientId, entries);
@@ -56,8 +56,8 @@ namespace PatientTrackerWPF.Services
 
             // Calculate overall statistics
             var eligiblePatients = patientData.Values
-                .Where(entries => entries.Where(e => e.BDI2 > 0).Count() >= 2)
-                .Where(entries => entries.Where(e => e.BDI2 > 0).OrderBy(e => e.Date).First().BDI2 >= 14)
+                .Where(entries => entries.Where(e => e.BDI2.HasValue && e.BDI2.Value >= 0).Count() >= 2) // FIXED: Handle nullable
+                .Where(entries => entries.Where(e => e.BDI2.HasValue && e.BDI2.Value >= 0).OrderBy(e => e.Date).First().BDI2.Value >= 14) // FIXED: Handle nullable
                 .Count();
 
             var patientsWithRemission = allRemissionPeriods
@@ -90,7 +90,7 @@ namespace PatientTrackerWPF.Services
             for (int i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
-                bool isRemissionScore = entry.BDI2 < 14;
+                bool isRemissionScore = entry.BDI2.Value < 14; // FIXED: Use .Value
 
                 if (!inRemission && isRemissionScore)
                 {
@@ -99,7 +99,7 @@ namespace PatientTrackerWPF.Services
                     {
                         PatientId = patientId,
                         RemissionStartDate = entry.Date,
-                        ScoreAtRemissionStart = entry.BDI2,
+                        ScoreAtRemissionStart = entry.BDI2.Value, // FIXED: Use .Value
                         IsCurrentlyInRemission = true,
                         RemissionStatus = "Current"
                     };
@@ -111,7 +111,7 @@ namespace PatientTrackerWPF.Services
                     if (currentPeriod != null)
                     {
                         currentPeriod.RemissionEndDate = entry.Date;
-                        currentPeriod.ScoreAtRemissionEnd = entry.BDI2;
+                        currentPeriod.ScoreAtRemissionEnd = entry.BDI2.Value; // FIXED: Use .Value
                         currentPeriod.DaysInRemission = (entry.Date - currentPeriod.RemissionStartDate).Days;
                         currentPeriod.IsCurrentlyInRemission = false;
                         currentPeriod.RemissionStatus = "Lost";
@@ -145,32 +145,37 @@ namespace PatientTrackerWPF.Services
             report.AppendLine();
 
             report.AppendLine("SUMMARY METRICS:");
-            report.AppendLine($"Total Eligible Patients: {analysis.TotalEligiblePatients}");
+            report.AppendLine($"Total Eligible Patients          : {analysis.TotalEligiblePatients}");
             report.AppendLine($"Patients Who Ever Reached Remission: {analysis.PatientsWhoEverReachedRemission}");
-            report.AppendLine($"All-Time Remission Rate: {analysis.AllTimeRemissionRate:F1}%");
-            report.AppendLine($"Currently in Remission: {analysis.CurrentlyInRemission}");
-            report.AppendLine($"Lost Remission: {analysis.LostRemission}");
-            report.AppendLine($"Average Remission Duration: {analysis.AverageRemissionDuration:F1} days");
+            report.AppendLine($"All-Time Remission Rate          : {analysis.AllTimeRemissionRate:F1}%");
+            report.AppendLine($"Currently in Remission           : {analysis.CurrentlyInRemission}");
+            report.AppendLine($"Lost Remission                   : {analysis.LostRemission}");
+            report.AppendLine($"Average Remission Duration       : {analysis.AverageRemissionDuration:F1} days");
             report.AppendLine();
 
             report.AppendLine("REMISSION PERIODS DETAIL:");
-            report.AppendLine("Patient ID\tStart Date\tEnd Date\tDays\tStatus\tStart Score\tEnd Score");
+            report.AppendLine(string.Format("{0,-12} {1,-12} {2,-12} {3,-6} {4,-10} {5,-12} {6,-10}",
+                                            "Patient ID", "Start Date", "End Date", "Days", "Status", "Start Score", "End Score"));
 
-            foreach (var period in analysis.AllRemissionPeriods.OrderBy(p => p.PatientId).ThenBy(p => p.RemissionStartDate))
+            foreach (var period in analysis.AllRemissionPeriods
+                                           .OrderBy(p => p.PatientId)
+                                           .ThenBy(p => p.RemissionStartDate))
             {
                 var endDateStr = period.RemissionEndDate?.ToString("yyyy-MM-dd") ?? "Ongoing";
                 var endScoreStr = period.ScoreAtRemissionEnd?.ToString() ?? "N/A";
 
-                report.AppendLine($"{period.PatientId}\t" +
-                                $"{period.RemissionStartDate:yyyy-MM-dd}\t" +
-                                $"{endDateStr}\t" +
-                                $"{period.DaysInRemission}\t" +
-                                $"{period.RemissionStatus}\t" +
-                                $"{period.ScoreAtRemissionStart}\t" +
-                                $"{endScoreStr}");
+                report.AppendLine(string.Format("{0,-12} {1,-12} {2,-12} {3,-6} {4,-10} {5,-12} {6,-10}",
+                                                period.PatientId,
+                                                period.RemissionStartDate.ToString("yyyy-MM-dd"),
+                                                endDateStr,
+                                                period.DaysInRemission,
+                                                period.RemissionStatus,
+                                                period.ScoreAtRemissionStart,
+                                                endScoreStr));
             }
 
             return report.ToString();
         }
+
     }
 }

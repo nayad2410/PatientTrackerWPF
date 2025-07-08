@@ -59,17 +59,17 @@ namespace PatientTrackerWPF
             }
 
             // TEMPORARY: For testing without database - remove when database is ready
-            if (username == "test" && password == "test")
-            {
-                ShowStatus("Login successful!", isError: false);
-                await Task.Delay(500);
+            //if (username == "test" && password == "test")
+            //{
+            //    ShowStatus("Login successful!", isError: false);
+            //    await Task.Delay(500);
 
-                // Open main window without auth service
-                var mainWindow = new MainWindow();
-                mainWindow.Show();
-                this.Close();
-                return;
-            }
+            //    // Open main window without auth service
+            //    var mainWindow = new MainWindow();
+            //    mainWindow.Show();
+            //    this.Close();
+            //    return;
+            //}
 
             // Real authentication when database is available
             await PerformLoginAsync(username, password);

@@ -142,6 +142,7 @@
                           HeadersVisibility="Column"
                           GridLinesVisibility="All"
                           AlternatingRowBackground="#F0F8FF"
+                   
                           FontSize="11"
                           Background="White" SelectionChanged="RemissionPeriodsGrid_SelectionChanged">
 
@@ -232,10 +233,27 @@
 
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Foreground" Value="Black"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="FontWeight" Value="Normal"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            
+                           
+                            <Setter Property="IsHitTestVisible" Value="True"/>
+                            <Setter Property="Focusable" Value="False"/>
+
+
+
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsCurrentlyInRemission}" Value="True">
                                     <Setter Property="Background" Value="LightGreen"/>
                                 </DataTrigger>
+
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="Black"/>
+                                </Trigger>
                             </Style.Triggers>
                         </Style>
                     </DataGrid.RowStyle>

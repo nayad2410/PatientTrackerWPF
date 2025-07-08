@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -22,6 +23,22 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
 using Separator = LiveCharts.Wpf.Separator;
+
+//  these for the professional report 
+using DrawingBitmap = System.Drawing.Bitmap;
+using DrawingColor = System.Drawing.Color;
+using DrawingGraphics = System.Drawing.Graphics;
+using DrawingFont = System.Drawing.Font;
+using DrawingFontStyle = System.Drawing.FontStyle;
+using DrawingBrushes = System.Drawing.Brushes;
+using DrawingPens = System.Drawing.Pens;
+using DrawingRectangle = System.Drawing.Rectangle;
+using DrawingPointF = System.Drawing.PointF;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
+using System.Drawing;
+using Brushes = System.Windows.Media.Brushes;
 
 namespace PatientTrackerWPF
 {
@@ -35,17 +52,9 @@ namespace PatientTrackerWPF
         private readonly AuthenticationService? authService;
         private ClinicalMetricsService.ClinicalMetrics? currentMetrics;
         private List<ScoreEntry> currentPatientEntries = new List<ScoreEntry>();
-        // Constants pulled from resources at runtime
-/*        private double ReportWidth => (double)FindResource("ReportWidth");
-        private int ReportDpi => (int)FindResource("ReportDpi");
-        private double[] HistoryColumnWidths
-          => ((double[])FindResource("HistoryColumnWidths")).ToArray();
-        private Brush PrimaryBrush => (Brush)FindResource("PrimaryBrush");
-        private Brush SecondaryBrush => (Brush)FindResource("SecondaryBrush");
-        private Brush AccentBrush => (Brush)FindResource("AccentBrush");*/
 
         // ─── Chart Collections ────────────────────────────────────────────────
-        public SeriesCollection ScoreSeriesCollection { get; set; }
+        public SeriesCollection ScoreSeriesCollection { get; set; } = new SeriesCollection();
         public ChartValues<DateTimePoint> Phq9Values { get; set; } = new();
         public ChartValues<DateTimePoint> Gad7Values { get; set; } = new();
         public ChartValues<DateTimePoint> Bdi2Values { get; set; } = new();
@@ -187,37 +196,37 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            // ADDED: Validate score ranges (0-80)
+            // FIXED: Validate score ranges with CORRECT ranges for each assessment
             var validationErrors = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(Phq9Box.Text))
             {
-                if (!int.TryParse(Phq9Box.Text, out int phq9) || phq9 < 0 || phq9 > 80)
-                    validationErrors.Add("PHQ-9 must be between 0 and 80");
+                if (!int.TryParse(Phq9Box.Text, out int phq9) || phq9 < 0 || phq9 > 27)  // FIXED: 0-27
+                    validationErrors.Add("PHQ-9 must be between 0 and 27");
             }
 
             if (!string.IsNullOrWhiteSpace(Gad7Box.Text))
             {
-                if (!int.TryParse(Gad7Box.Text, out int gad7) || gad7 < 0 || gad7 > 80)
-                    validationErrors.Add("GAD-7 must be between 0 and 80");
+                if (!int.TryParse(Gad7Box.Text, out int gad7) || gad7 < 0 || gad7 > 21)  // FIXED: 0-21
+                    validationErrors.Add("GAD-7 must be between 0 and 21");
             }
 
             if (!string.IsNullOrWhiteSpace(Bdi2Box.Text))
             {
-                if (!int.TryParse(Bdi2Box.Text, out int bdi2) || bdi2 < 0 || bdi2 > 80)
-                    validationErrors.Add("BDI-II must be between 0 and 80");
+                if (!int.TryParse(Bdi2Box.Text, out int bdi2) || bdi2 < 0 || bdi2 > 63)  // FIXED: 0-63
+                    validationErrors.Add("BDI-II must be between 0 and 63");
             }
 
             if (!string.IsNullOrWhiteSpace(PCL5Total.Text))
             {
-                if (!int.TryParse(PCL5Total.Text, out int pcl5) || pcl5 < 0 || pcl5 > 80)
+                if (!int.TryParse(PCL5Total.Text, out int pcl5) || pcl5 < 0 || pcl5 > 80)  // CORRECT: 0-80
                     validationErrors.Add("PCL-5 must be between 0 and 80");
             }
 
             if (!string.IsNullOrWhiteSpace(YBOCS.Text))
             {
-                if (!int.TryParse(YBOCS.Text, out int ybocs) || ybocs < 0 || ybocs > 80)
-                    validationErrors.Add("Y-BOCS must be between 0 and 80");
+                if (!int.TryParse(YBOCS.Text, out int ybocs) || ybocs < 0 || ybocs > 40)  // FIXED: 0-40
+                    validationErrors.Add("Y-BOCS must be between 0 and 40");
             }
 
             if (validationErrors.Any())
@@ -248,12 +257,12 @@ namespace PatientTrackerWPF
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    // Update existing entry
-                    existingEntry.PHQ9 = TryParseOrDefault(Phq9Box.Text);
-                    existingEntry.GAD7 = TryParseOrDefault(Gad7Box.Text);
-                    existingEntry.BDI2 = TryParseOrDefault(Bdi2Box.Text);
-                    existingEntry.PCL5 = TryParseOrDefault(PCL5Total.Text);
-                    existingEntry.YBOCS = TryParseOrDefault(YBOCS.Text);
+                    // Update existing entry - FIXED: Use nullable parsing
+                    existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
+                    existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
+                    existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
+                    existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
+                    existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
                     existingEntry.Note = NoteBox.Text.Trim();
                     existingEntry.CreatedBy = authService?.GetCurrentUsername() ?? "Unknown";
                     existingEntry.CreatedAt = DateTime.UtcNow;
@@ -265,15 +274,15 @@ namespace PatientTrackerWPF
             }
             else
             {
-                // Create new entry
+                // Create new entry - FIXED: Use nullable parsing
                 var entry = new ScoreEntry
                 {
                     PatientId = id,
-                    PHQ9 = TryParseOrDefault(Phq9Box.Text),
-                    GAD7 = TryParseOrDefault(Gad7Box.Text),
-                    BDI2 = TryParseOrDefault(Bdi2Box.Text),
-                    PCL5 = TryParseOrDefault(PCL5Total.Text),
-                    YBOCS = TryParseOrDefault(YBOCS.Text),
+                    PHQ9 = TryParseOrNull(Phq9Box.Text),
+                    GAD7 = TryParseOrNull(Gad7Box.Text),
+                    BDI2 = TryParseOrNull(Bdi2Box.Text),
+                    PCL5 = TryParseOrNull(PCL5Total.Text),
+                    YBOCS = TryParseOrNull(YBOCS.Text),
                     Note = NoteBox.Text.Trim(),
                     Date = selectedDate,
                     CreatedBy = authService?.GetCurrentUsername() ?? "Unknown",
@@ -297,8 +306,8 @@ namespace PatientTrackerWPF
             ScoresGrid.ItemsSource = patientData[id];
         }
 
-        private int TryParseOrDefault(string txt)
-            => int.TryParse(txt, out var v) ? v : -1;
+        private int? TryParseOrNull(string txt)
+            => int.TryParse(txt, out var v) ? v : null;  // Return null instead of -1
 
         // ─── Update Chart ────────────────────────────────────────────────────
         private void UpdateChartForPatient(string patientId)
@@ -308,6 +317,7 @@ namespace PatientTrackerWPF
                 if (!patientData.ContainsKey(patientId)) return;
 
                 var scores = patientData[patientId].OrderBy(s => s.Date).ToList();
+
                 currentPatientEntries = scores;
 
                 ScoresGrid.ItemsSource = null;
@@ -339,26 +349,25 @@ namespace PatientTrackerWPF
                     return;
                 }
 
-                //  Only add data points when scores exist (>= 0)
+                // FIXED: Only add data points when scores exist (not null)
                 foreach (var entry in scores)
                 {
-                    // Only add data points for actual scores, skip -1 values
-                    if (entry.PHQ9 >= 0)
-                        Phq9Values.Add(new DateTimePoint(entry.Date, entry.PHQ9));
+                    // Only add data points for actual scores, skip null values
+                    if (entry.PHQ9.HasValue)  // FIXED: Check HasValue instead of >= 0
+                        Phq9Values.Add(new DateTimePoint(entry.Date, (double)entry.PHQ9.Value));
 
-                    if (entry.GAD7 >= 0)
-                        Gad7Values.Add(new DateTimePoint(entry.Date, entry.GAD7));
+                    if (entry.GAD7.HasValue)  // FIXED: Check HasValue instead of >= 0
+                        Gad7Values.Add(new DateTimePoint(entry.Date, (double)entry.GAD7.Value));
 
-                    if (entry.BDI2 >= 0)
-                        Bdi2Values.Add(new DateTimePoint(entry.Date, entry.BDI2));
+                    if (entry.BDI2.HasValue)  // FIXED: Check HasValue instead of >= 0
+                        Bdi2Values.Add(new DateTimePoint(entry.Date, (double)entry.BDI2.Value));
 
-                    if (entry.PCL5 >= 0)
-                        Pcl5Values.Add(new DateTimePoint(entry.Date, entry.PCL5));
+                    if (entry.PCL5.HasValue)  // FIXED: Check HasValue instead of >= 0
+                        Pcl5Values.Add(new DateTimePoint(entry.Date, (double)entry.PCL5.Value));
 
-                    if (entry.YBOCS >= 0)
-                        YbocsValues.Add(new DateTimePoint(entry.Date, entry.YBOCS));
+                    if (entry.YBOCS.HasValue)  // FIXED: Check HasValue instead of >= 0
+                        YbocsValues.Add(new DateTimePoint(entry.Date, (double)entry.YBOCS.Value));
                 }
-
 
                 // Set axis range with minimal padding
                 var firstDate = scores.First().Date;
@@ -397,6 +406,9 @@ namespace PatientTrackerWPF
                 MessageBox.Show($"Error updating chart: {ex.Message}", "Chart Error");
             }
         }
+
+
+
 
         private void SetSmartDateSeparator(List<ScoreEntry> scores, DateTime firstDate, DateTime lastDate)
         {
@@ -554,26 +566,427 @@ namespace PatientTrackerWPF
             return box;
         }
 
-        private Color GetNoteBoxColor(int index)
+        private System.Windows.Media.Color GetNoteBoxColor(int index)
         {
             var colors = new[]
             {
-        Color.FromRgb(255, 255, 204), // Light Yellow
-        Color.FromRgb(230, 243, 255), // Light Blue  
-        Color.FromRgb(240, 248, 230), // Light Green
-        Color.FromRgb(255, 240, 245), // Light Pink
-        Color.FromRgb(245, 245, 220), // Beige
-        Color.FromRgb(230, 230, 250), // Lavender
-        Color.FromRgb(240, 255, 240), // Honeydew
-        Color.FromRgb(255, 250, 240), // Floral White
-        Color.FromRgb(255, 228, 225), // Misty Rose
-        Color.FromRgb(240, 248, 255), // Alice Blue
-        Color.FromRgb(250, 240, 230), // Linen
-        Color.FromRgb(245, 255, 250)  // Mint Cream
-    };
+                System.Windows.Media.Color.FromRgb(255, 255, 204), // Light Yellow
+                System.Windows.Media.Color.FromRgb(230, 243, 255), // Light Blue  
+                System.Windows.Media.Color.FromRgb(240, 248, 230), // Light Green
+                System.Windows.Media.Color.FromRgb(255, 240, 245), // Light Pink
+                System.Windows.Media.Color.FromRgb(245, 245, 220), // Beige
+                System.Windows.Media.Color.FromRgb(230, 230, 250), // Lavender
+                System.Windows.Media.Color.FromRgb(240, 255, 240), // Honeydew
+                System.Windows.Media.Color.FromRgb(255, 250, 240), // Floral White
+                System.Windows.Media.Color.FromRgb(255, 228, 225), // Misty Rose
+                System.Windows.Media.Color.FromRgb(240, 248, 255), // Alice Blue
+                System.Windows.Media.Color.FromRgb(250, 240, 230), // Linen
+                System.Windows.Media.Color.FromRgb(245, 255, 250)  // Mint Cream
+            };
             return colors[index % colors.Length];
         }
 
+        private void GenerateProfessionalReport_Click(object sender, RoutedEventArgs e)
+        {
+            var patientId = PatientSelector.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
+            {
+                MessageBox.Show("Please select a valid patient.");
+                return;
+            }
+
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                var entries = patientData[patientId].OrderBy(e => e.Date).ToList();
+                if (!entries.Any())
+                {
+                    MessageBox.Show("No data available for this patient.");
+                    return;
+                }
+
+                // Create professional clinical report
+                var reportImage = CreateProfessionalClinicalReport(patientId, entries);
+
+                // Save as PNG
+                var dialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    FileName = $"ReconnectClinicalReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmm}.png",
+                    Filter = "PNG Image|*.png"
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    reportImage.Save(dialog.FileName, ImageFormat.Png);
+                    reportImage.Dispose();
+
+                    MessageBox.Show($"Professional clinical report generated successfully!\n\nFile: {dialog.FileName}",
+                                   "Report Generated", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    reportImage.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error generating report: {ex.Message}", "Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+        }
+
+        private DrawingBitmap CreateProfessionalClinicalReport(string patientId, List<ScoreEntry> entries)
+        {
+            // Report dimensions
+            const int width = 1200;
+            const int height = 1600;
+
+            var bitmap = new DrawingBitmap(width, height);
+            using var g = DrawingGraphics.FromImage(bitmap);
+
+            // High quality rendering
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.AntiAlias;
+
+            // Background
+            g.Clear(DrawingColor.White);
+
+            // Fonts
+            var titleFont = new DrawingFont("Arial", 24, DrawingFontStyle.Bold);
+            var headerFont = new DrawingFont("Arial", 16, DrawingFontStyle.Bold);
+            var subHeaderFont = new DrawingFont("Arial", 12, DrawingFontStyle.Bold);
+            var bodyFont = new DrawingFont("Arial", 10);
+            var smallFont = new DrawingFont("Arial", 9);
+
+            // Colors
+            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
+            var lightBlue = DrawingColor.FromArgb(230, 243, 255);
+            var darkGray = DrawingColor.FromArgb(64, 64, 64);
+            var lightGray = DrawingColor.FromArgb(240, 240, 240);
+
+            var currentY = 40;
+
+            // HEADER SECTION
+            using (var headerBrush = new SolidBrush(reconnectBlue))
+            using (var headerRect = new SolidBrush(lightBlue))
+            {
+                // Header background
+                g.FillRectangle(headerRect, 0, 0, width, 120);
+                g.FillRectangle(headerBrush, 0, 0, width, 80);
+
+                // Reconnect logo area
+                g.DrawString("RECONNECT", titleFont, DrawingBrushes.White, 50, 25);
+                g.DrawString("MENTAL HEALTH", new DrawingFont("Arial", 12), DrawingBrushes.LightGray, 50, 55);
+
+                // Report title
+                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 350, 25);
+                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 350, 50);
+            }
+
+            currentY = 140;
+
+            // PATIENT INFO SECTION
+            g.DrawString($"Patient ID: {patientId}", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            currentY += 30;
+            g.DrawString($"Report Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}", bodyFont, new SolidBrush(darkGray), 50, currentY);
+            g.DrawString($"Assessment Period: {entries.First().Date:MMM dd, yyyy} to {entries.Last().Date:MMM dd, yyyy}",
+                        bodyFont, new SolidBrush(darkGray), 400, currentY);
+            currentY += 50;
+
+            // DATA TABLE SECTION
+            g.DrawString("Assessment Scores Over Time", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            currentY += 35;
+
+            // Create data table
+            var tableY = CreateDataTable(g, entries, 50, currentY, width - 100);
+            currentY = tableY + 40;
+
+            // PROGRESS CHART SECTION
+            g.DrawString($"Progress Track: {entries.First().Date:MMM dd/yy} to {entries.Last().Date:MMM dd/yy}",
+                        headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            currentY += 35;
+
+            // Create progress chart
+            var chartHeight = CreateProgressChart(g, entries, 50, currentY, width - 100, 400);
+            currentY += chartHeight + 40;
+
+            // TREATMENT NOTES SECTION
+            g.DrawString("Recent Treatment Notes", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            currentY += 35;
+
+            var recentNotes = entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.Note))
+                .OrderByDescending(e => e.Date)
+                .Take(5)
+                .ToList();
+
+            if (recentNotes.Any())
+            {
+                foreach (var entry in recentNotes)
+                {
+                    g.DrawString($"• {entry.Date:yyyy-MM-dd}: {entry.Note}", bodyFont, new SolidBrush(darkGray),
+                                70, currentY);
+                    currentY += 25;
+                }
+            }
+            else
+            {
+                g.DrawString("No treatment notes available.", bodyFont, new SolidBrush(darkGray), 70, currentY);
+            }
+
+            // FOOTER
+            currentY = height - 60;
+            using (var footerBrush = new SolidBrush(lightGray))
+            {
+                g.FillRectangle(footerBrush, 0, currentY - 10, width, 70);
+                g.DrawString("This report is generated by Reconnect Mental Health Assessment System",
+                            smallFont, new SolidBrush(darkGray), 50, currentY + 10);
+                g.DrawString($"Report ID: RPT-{patientId}-{DateTime.Now:yyyyMMddHHmm}",
+                            smallFont, new SolidBrush(darkGray), 50, currentY + 30);
+            }
+
+            // Cleanup fonts
+            titleFont.Dispose();
+            headerFont.Dispose();
+            subHeaderFont.Dispose();
+            bodyFont.Dispose();
+            smallFont.Dispose();
+
+            return bitmap;
+        }
+
+        private int CreateDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth)
+        {
+            var cellFont = new DrawingFont("Arial", 9);
+            var headerFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
+            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
+            var lightGray = DrawingColor.FromArgb(240, 240, 240);
+
+            // Take up to 10 most recent entries for the table
+            var tableEntries = entries.TakeLast(10).ToList();
+
+            // Column setup
+            var columns = new[] { "Date", "PHQ-9", "GAD-7", "BDI-II", "PCL-5", "Y-BOCS" };
+            var colWidth = tableWidth / columns.Length;
+            var rowHeight = 25;
+
+            var currentY = y;
+
+            // Draw header
+            using (var headerBrush = new SolidBrush(reconnectBlue))
+            {
+                g.FillRectangle(headerBrush, x, currentY, tableWidth, rowHeight);
+
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    var cellX = x + (i * colWidth);
+                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
+                                cellX + 10, currentY + 5);
+
+                    // Draw column separator
+                    if (i < columns.Length - 1)
+                    {
+                        g.DrawLine(DrawingPens.White, cellX + colWidth, currentY,
+                                  cellX + colWidth, currentY + rowHeight);
+                    }
+                }
+            }
+            currentY += rowHeight;
+
+            // Draw data rows
+            for (int row = 0; row < tableEntries.Count; row++)
+            {
+                var entry = tableEntries[row];
+                var isAlternate = row % 2 == 1;
+
+                // Alternate row background
+                if (isAlternate)
+                {
+                    using (var altBrush = new SolidBrush(lightGray))
+                    {
+                        g.FillRectangle(altBrush, x, currentY, tableWidth, rowHeight);
+                    }
+                }
+
+                // Data values
+                var values = new string[]
+                {
+            entry.Date.ToString("dd-MMM-yyyy"),
+            entry.PHQ9?.ToString() ?? "—",
+            entry.GAD7?.ToString() ?? "—",
+            entry.BDI2?.ToString() ?? "—",
+            entry.PCL5?.ToString() ?? "—",
+            entry.YBOCS?.ToString() ?? "—"
+                };
+
+                // Draw cells
+                for (int i = 0; i < values.Length; i++)
+                {
+                    var cellX = x + (i * colWidth);
+                    g.DrawString(values[i], cellFont, DrawingBrushes.Black,
+                                cellX + 10, currentY + 5);
+
+                    // Draw column separator
+                    if (i < values.Length - 1)
+                    {
+                        g.DrawLine(DrawingPens.LightGray, cellX + colWidth, currentY,
+                                  cellX + colWidth, currentY + rowHeight);
+                    }
+                }
+
+                // Draw row separator
+                g.DrawLine(DrawingPens.LightGray, x, currentY + rowHeight,
+                          x + tableWidth, currentY + rowHeight);
+
+                currentY += rowHeight;
+            }
+
+            // Draw table border
+            g.DrawRectangle(DrawingPens.Gray, x, y, tableWidth, currentY - y);
+
+            cellFont.Dispose();
+            headerFont.Dispose();
+
+            return currentY;
+        }
+
+        private int CreateProgressChart(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int chartWidth, int chartHeight)
+        {
+            if (!entries.Any()) return y;
+
+            var chartArea = new DrawingRectangle(x + 60, y + 40, chartWidth - 120, chartHeight - 80);
+            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
+            var treatmentPhase = DrawingColor.FromArgb(150, 255, 255, 204); // Light yellow with transparency
+
+            // Draw chart background
+            g.FillRectangle(DrawingBrushes.White, chartArea);
+            g.DrawRectangle(DrawingPens.Gray, chartArea);
+
+            // Treatment phase background
+            var phaseStart = entries.Count > 2 ? 0.2f : 0;
+            var phaseEnd = entries.Count > 4 ? 0.8f : 1;
+
+            var phaseStartX = chartArea.X + (int)(chartArea.Width * phaseStart);
+            var phaseWidth = (int)(chartArea.Width * (phaseEnd - phaseStart));
+
+            using (var phaseBrush = new SolidBrush(treatmentPhase))
+            {
+                g.FillRectangle(phaseBrush, phaseStartX, chartArea.Y, phaseWidth, chartArea.Height);
+            }
+
+            // Add phase label
+            g.DrawString("Treatment Phase", new DrawingFont("Arial", 8), new SolidBrush(reconnectBlue),
+                        phaseStartX + 10, chartArea.Y + 10);
+
+            // Draw grid lines
+            for (int i = 0; i <= 8; i++)
+            {
+                var gridY = chartArea.Y + (i * chartArea.Height / 8);
+                g.DrawLine(DrawingPens.LightGray, chartArea.X, gridY, chartArea.Right, gridY);
+
+                // Y-axis labels (0-80 scale)
+                var value = 80 - (i * 10);
+                g.DrawString(value.ToString(), new DrawingFont("Arial", 8), DrawingBrushes.Black,
+                            chartArea.X - 30, gridY - 6);
+            }
+
+            // Draw vertical grid lines
+            for (int i = 0; i <= 10; i++)
+            {
+                var gridX = chartArea.X + (i * chartArea.Width / 10);
+                g.DrawLine(DrawingPens.LightGray, gridX, chartArea.Y, gridX, chartArea.Bottom);
+            }
+
+            // Plot assessment lines
+            PlotAssessmentLine(g, entries, chartArea, e => e.PHQ9, DrawingColor.Blue, "PHQ-9", 0, 27);
+            PlotAssessmentLine(g, entries, chartArea, e => e.GAD7, DrawingColor.Green, "GAD-7", 0, 21);
+            PlotAssessmentLine(g, entries, chartArea, e => e.BDI2, DrawingColor.Orange, "BDI-II", 0, 63);
+            PlotAssessmentLine(g, entries, chartArea, e => e.PCL5, DrawingColor.DarkCyan, "PCL-5", 0, 80);
+            PlotAssessmentLine(g, entries, chartArea, e => e.YBOCS, DrawingColor.Purple, "Y-BOCS", 0, 40);
+
+            // Draw legend
+            DrawChartLegend(g, chartArea.Right - 200, chartArea.Y);
+
+            // X-axis labels (dates)
+            var dateStep = Math.Max(1, entries.Count / 6);
+            for (int i = 0; i < entries.Count; i += dateStep)
+            {
+                var entry = entries[i];
+                var pointX = chartArea.X + (i * chartArea.Width / (entries.Count - 1));
+                g.DrawString(entry.Date.ToString("dd-MMM"), new DrawingFont("Arial", 8), DrawingBrushes.Black,
+                            pointX - 20, chartArea.Bottom + 10);
+            }
+
+            return y + chartHeight;
+        }
+
+        private void PlotAssessmentLine(DrawingGraphics g, List<ScoreEntry> entries, DrawingRectangle chartArea,
+                                       Func<ScoreEntry, int?> scoreSelector, DrawingColor color,
+                                       string label, int minScore, int maxScore)
+        {
+            var points = new List<DrawingPointF>();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var score = scoreSelector(entries[i]);
+                if (score.HasValue)
+                {
+                    var x = chartArea.X + (i * chartArea.Width / (entries.Count - 1));
+                    // Scale score to chart (0-80 range for display)
+                    var normalizedScore = (double)score.Value / maxScore * 80;
+                    var y = chartArea.Bottom - (int)(normalizedScore * chartArea.Height / 80);
+                    points.Add(new DrawingPointF(x, y));
+                }
+            }
+
+            if (points.Count > 1)
+            {
+                using (var pen = new System.Drawing.Pen(color, 3))
+                {
+                    g.DrawLines(pen, points.ToArray());
+                }
+
+                // Draw points
+                using (var brush = new SolidBrush(color))
+                {
+                    foreach (var point in points)
+                    {
+                        g.FillEllipse(brush, point.X - 4, point.Y - 4, 8, 8);
+                    }
+                }
+            }
+        }
+
+        private void DrawChartLegend(DrawingGraphics g, int x, int y)
+        {
+            var legendItems = new[]
+            {
+        ("PHQ-9", DrawingColor.Blue),
+        ("GAD-7", DrawingColor.Green),
+        ("BDI-II", DrawingColor.Orange),
+        ("PCL-5", DrawingColor.DarkCyan),
+        ("Y-BOCS", DrawingColor.Purple)
+    };
+
+            var currentY = y;
+            foreach (var (label, color) in legendItems)
+            {
+                // Draw line sample
+                using (var pen = new System.Drawing.Pen(color, 3))
+                {
+                    g.DrawLine(pen, x, currentY + 5, x + 20, currentY + 5);
+                }
+
+                // Draw label
+                g.DrawString(label, new DrawingFont("Arial", 9), DrawingBrushes.Black, x + 25, currentY);
+                currentY += 20;
+            }
+        }
 
 
 
@@ -583,7 +996,7 @@ namespace PatientTrackerWPF
                 MessageBox.Show(txt, "Full Treatment Note");
         }
 
-        // ─── Event Handlers ─────────────────────────────────────────────────
+
         private void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (PatientSelector.SelectedItem is string id)
@@ -593,9 +1006,28 @@ namespace PatientTrackerWPF
                 if (currentMetrics != null)
                 {
                     UpdateCurrentPatientOutcome(id);
+                    ResetMetricsDisplay();
+
                 }
             }
         }
+        private void ResetMetricsDisplay()
+        {
+            ResponseRateText.Text = "0.0%";
+            ResponseCountText.Text = "(0/0)";
+            RemissionRateText.Text = "0.0%";
+            RemissionCountText.Text = "(0/0)";
+            AverageImprovementText.Text = "0.0%";
+            EligiblePatientsText.Text = "0";
+
+            QuickResponseRate.Text = "0.0%";
+            QuickRemissionRate.Text = "0.0%";
+
+            // Reset colors to default (optional)
+            ResponseRateText.Foreground = Brushes.Black;
+            RemissionRateText.Foreground = Brushes.Black;
+        }
+
 
         private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -607,7 +1039,7 @@ namespace PatientTrackerWPF
             ScoresGrid.ItemsSource = list;
         }
 
-        // ─── RESTORED: All your original working methods ─────────────────────
+
 
         private void CalculateMetrics_Click(object sender, RoutedEventArgs e)
         {
@@ -753,10 +1185,10 @@ namespace PatientTrackerWPF
         private void ExportToCsv_Click(object sender, RoutedEventArgs e)
         {
             var filtered = patientData.Values.SelectMany(v => v)
-                .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(s => s.PatientId)
-                .ThenBy(s => s.Date)
-                .ToList();
+       .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
+       .OrderBy(s => s.PatientId)
+       .ThenBy(s => s.Date)
+       .ToList();
 
             if (!filtered.Any())
             {
@@ -768,11 +1200,12 @@ namespace PatientTrackerWPF
             sb.AppendLine("PatientId,Date,PHQ9,GAD7,BDI2,PCL5,YBOCS,Note");
             foreach (var s in filtered)
             {
-                var phq9Str = s.PHQ9 == -1 ? "Not entered" : s.PHQ9.ToString();
-                var gad7Str = s.GAD7 == -1 ? "Not entered" : s.GAD7.ToString();
-                var bdi2Str = s.BDI2 == -1 ? "Not entered" : s.BDI2.ToString();
-                var pcl5Str = s.PCL5 == -1 ? "Not entered" : s.PCL5.ToString();
-                var ybocsStr = s.YBOCS == -1 ? "Not entered" : s.YBOCS.ToString();
+                // FIXED: Handle null values properly in CSV export - use simple dash for CSV compatibility
+                var phq9Str = s.PHQ9.HasValue ? s.PHQ9.Value.ToString() : "-";
+                var gad7Str = s.GAD7.HasValue ? s.GAD7.Value.ToString() : "-";
+                var bdi2Str = s.BDI2.HasValue ? s.BDI2.Value.ToString() : "-";
+                var pcl5Str = s.PCL5.HasValue ? s.PCL5.Value.ToString() : "-";
+                var ybocsStr = s.YBOCS.HasValue ? s.YBOCS.Value.ToString() : "-";
 
                 sb.AppendLine($"{s.PatientId},{s.Date:yyyy-MM-dd},{phq9Str},{gad7Str},{bdi2Str},{pcl5Str},{ybocsStr},\"{s.Note?.Replace("\"", "\"\"")}\"");
             }
@@ -787,88 +1220,175 @@ namespace PatientTrackerWPF
 
         //Export to PNG ──────────────────────────────────────────────────────
 
-        private void ExportToPng_Click(object sender, RoutedEventArgs e)
-        {
-            string patientId = PatientSelector.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
-            {
-                MessageBox.Show("Please select a valid patient.");
-                return;
-            }
-            try
-            {
-                // Step 1: Set export header information
-                ExportPatientId.Text = $"Patient ID: {patientId}";
-                ExportDate.Text = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
-                // Step 2: Create export data with proper property names
-                var patientScores = patientData[patientId].OrderBy(s => s.Date).ToList();
-                var exportData = patientScores.Select(entry => new
-                {
-                    PatientId = entry.PatientId,
-                    Date = entry.Date,
-                    PHQ9 = entry.PHQ9 == -1 ? "—" : entry.PHQ9.ToString(),
-                    GAD7 = entry.GAD7 == -1 ? "—" : entry.GAD7.ToString(),
-                    BDI2 = entry.BDI2 == -1 ? "—" : entry.BDI2.ToString(),
-                    PCL5 = entry.PCL5 == -1 ? "—" : entry.PCL5.ToString(),
-                    YBOCS = entry.YBOCS == -1 ? "—" : entry.YBOCS.ToString(),
-                    Note = entry.Note ?? ""
-                }).ToList();
-                // Step 3: Bind data to export grid
-                ExportScoreGrid.ItemsSource = exportData;
-                // Step 4: Fill notes summary
-                var notesForExport = patientData[patientId]
-                    .Where(p => !string.IsNullOrWhiteSpace(p.Note))
-                    .OrderByDescending(p => p.Date)
-                    .Select(p => $"{p.Date:MMM dd, yyyy}: {p.Note}")
-                    .Take(10);
-                ExportNoteText.Text = notesForExport.Any() ?
-                    string.Join("\n\n", notesForExport) :
-                    "No treatment notes available.";
-                // Step 5: Simple chart capture
-                PatientProgressChart.UpdateLayout();
 
-                double chartWidth = PatientProgressChart.ActualWidth;
-                double chartHeight = PatientProgressChart.ActualHeight;
 
-                if (chartWidth <= 0) chartWidth = 600;
-                if (chartHeight <= 0) chartHeight = 300;
-                var chartBitmap = new RenderTargetBitmap(
-                    (int)chartWidth, (int)chartHeight, 96, 96, PixelFormats.Pbgra32);
-                chartBitmap.Render(PatientProgressChart);
-                ExportChartImage.Source = chartBitmap;
-                // Step 6: Show and update export layout
-                ExportLayout.Visibility = Visibility.Visible;
-                ExportLayout.UpdateLayout();
+        //private async void ExportToPng_Click(object sender, RoutedEventArgs e)
+        //{
+        //    var patientId = PatientSelector.Text?.Trim();
+        //    if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
+        //    {
+        //        MessageBox.Show("Please select a valid patient.");
+        //        return;
+        //    }
 
-                // Force grid update
-                ExportScoreGrid.UpdateLayout();
+        //    // Store original window state
+        //    var originalWindowState = this.WindowState;
+        //    var originalWidth = this.Width;
+        //    var originalHeight = this.Height;
 
-                // Wait for rendering
-                Application.Current.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
-                System.Threading.Thread.Sleep(300);
-                // Step 7: Render final export
-                var exportBitmap = new RenderTargetBitmap(1600, 1200, 96, 96, PixelFormats.Pbgra32);
-                exportBitmap.Render(ExportLayout);
-                // Step 8: Save file
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(exportBitmap));
-                string fileName = $"PatientReport{patientId}{DateTime.Now:yyyyMMdd_HHmmss}.png";
-                using (var fileStream = new FileStream(fileName, FileMode.Create))
-                {
-                    encoder.Save(fileStream);
-                }
-                // Step 9: Hide export layout
-                ExportLayout.Visibility = Visibility.Collapsed;
-                MessageBox.Show($"Export completed successfully!\n\nFile: {fileName}\nLocation: {System.IO.Path.GetFullPath(fileName)}",
-                               "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                ExportLayout.Visibility = Visibility.Collapsed;
-                MessageBox.Show($"Export failed: {ex.Message}", "Export Error",
-                               MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+        //    try
+        //    {
+        //        Mouse.OverrideCursor = Cursors.Wait;
+
+        //        // SOLUTION: Temporarily set fixed window size for consistent export
+        //        this.WindowState = WindowState.Normal;
+        //        this.Width = 1200;
+        //        this.Height = 900;
+        //        this.UpdateLayout();
+        //        await Task.Delay(100);
+
+        //        // Prepare export layout with FIXED dimensions
+        //        ExportLayout.Visibility = Visibility.Visible;
+        //        ExportLayout.Opacity = 1.0;
+        //        ExportLayout.IsHitTestVisible = true;
+
+        //        // FORCE FIXED DIMENSIONS regardless of parent
+        //        ExportLayout.Width = 950;
+        //        ExportLayout.Height = double.NaN; // Let height auto-calculate
+        //        ExportContent.Width = 900;
+        //        ExportContent.Height = double.NaN;
+
+        //        // Set up all content
+        //        ExportPatientId.Text = $"Patient ID: {patientId}";
+        //        ExportDate.Text = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
+
+        //        // Create chart image
+        //        var chartRenderSize = new System.Windows.Size(800, 400);
+        //        PatientProgressChart.Measure(chartRenderSize);
+        //        PatientProgressChart.Arrange(new Rect(chartRenderSize));
+        //        PatientProgressChart.UpdateLayout();
+
+        //        var chartBitmap = new RenderTargetBitmap(800, 400, 96, 96, PixelFormats.Pbgra32);
+        //        chartBitmap.Render(PatientProgressChart);
+        //        ExportChartImage.Source = chartBitmap;
+
+        //        // Set up data
+        //        var patientEntries = patientData[patientId].OrderBy(e => e.Date).ToList();
+        //        ExportScoreGrid.ItemsSource = null;
+        //        ExportScoreGrid.ItemsSource = patientEntries;
+
+        //        // Set up notes
+        //        var recentNotes = patientEntries
+        //            .Where(e => !string.IsNullOrWhiteSpace(e.Note))
+        //            .OrderByDescending(e => e.Date)
+        //            .Take(5)
+        //            .Select(e => $"{e.Date:yyyy-MM-dd}: {e.Note}")
+        //            .ToList();
+
+        //        ExportNoteText.Text = recentNotes.Any()
+        //            ? string.Join("\n\n", recentNotes)
+        //            : "No treatment notes available.";
+
+        //        // FORCE all child elements to remove height constraints
+        //        ExportScoreGrid.Height = double.NaN;
+        //        ExportScoreGrid.MaxHeight = double.PositiveInfinity;
+        //        ExportNoteText.Height = double.NaN;
+        //        ExportNoteText.MaxHeight = double.PositiveInfinity;
+
+        //        // Force layout update with FIXED width
+        //        ExportLayout.InvalidateVisual();
+        //        ExportLayout.InvalidateMeasure();
+        //        ExportLayout.InvalidateArrange();
+
+        //        // Measure with FIXED width, unlimited height
+        //        ExportLayout.Measure(new System.Windows.Size(950, double.PositiveInfinity));
+
+        //        // Use FIXED width and calculated height
+        //        var layoutWidth = 950;
+        //        var layoutHeight = ExportLayout.DesiredSize.Height;
+
+        //        // Arrange with calculated dimensions
+        //        ExportLayout.Arrange(new Rect(0, 0, layoutWidth, layoutHeight));
+        //        ExportLayout.UpdateLayout();
+
+        //        // Wait for rendering
+        //        await Task.Delay(500);
+
+        //        // Multiple dispatcher calls to ensure complete rendering
+        //        for (int i = 0; i < 3; i++)
+        //        {
+        //            Application.Current.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+        //            await Task.Delay(100);
+        //        }
+
+        //        // Get final dimensions
+        //        var finalWidth = 950;  // FIXED width
+        //        var finalHeight = (int)Math.Ceiling(Math.Max(layoutHeight, 800));
+
+        //        // Debug info
+        //        System.Diagnostics.Debug.WriteLine($"Fixed export dimensions: {finalWidth} x {finalHeight}");
+        //        System.Diagnostics.Debug.WriteLine($"Layout actual: {ExportLayout.ActualWidth} x {ExportLayout.ActualHeight}");
+        //        System.Diagnostics.Debug.WriteLine($"Layout desired: {ExportLayout.DesiredSize.Width} x {ExportLayout.DesiredSize.Height}");
+        //        System.Diagnostics.Debug.WriteLine($"Window size during export: {this.Width} x {this.Height}");
+
+        //        // Create bitmap with FIXED dimensions
+        //        var exportBitmap = new RenderTargetBitmap(
+        //            finalWidth,
+        //            finalHeight,
+        //            96, 96,
+        //            PixelFormats.Pbgra32);
+
+        //        exportBitmap.Render(ExportLayout);
+
+        //        // Verify bitmap
+        //        if (exportBitmap.PixelWidth == 0 || exportBitmap.PixelHeight == 0)
+        //        {
+        //            MessageBox.Show("Error: Unable to generate export image. Please try again.",
+        //                           "Export Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        //            return;
+        //        }
+
+        //        // Save file
+        //        var encoder = new PngBitmapEncoder();
+        //        encoder.Frames.Add(BitmapFrame.Create(exportBitmap));
+
+        //        var dialog = new Microsoft.Win32.SaveFileDialog
+        //        {
+        //            FileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmm}.png",
+        //            Filter = "PNG Image|*.png"
+        //        };
+
+        //        if (dialog.ShowDialog() == true)
+        //        {
+        //            using (var stream = File.Create(dialog.FileName))
+        //            {
+        //                encoder.Save(stream);
+        //            }
+
+        //            var fileInfo = new FileInfo(dialog.FileName);
+        //            MessageBox.Show($"Report exported successfully!\n\nFile: {dialog.FileName}\nSize: {finalWidth} x {finalHeight} pixels\nFile size: {fileInfo.Length / 1024:F1} KB\nMethod: Fixed Dimensions",
+        //                           "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        MessageBox.Show($"Export failed: {ex.Message}\n\nDetails: {ex.ToString()}",
+        //                       "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        //    }
+        //    finally
+        //    {
+        //        // Restore original window state
+        //        this.WindowState = originalWindowState;
+        //        this.Width = originalWidth;
+        //        this.Height = originalHeight;
+        //        this.UpdateLayout();
+
+        //        Mouse.OverrideCursor = null;
+        //        ExportLayout.Visibility = Visibility.Collapsed;
+        //    }
+        //}
+
+
 
 
 
@@ -898,7 +1418,7 @@ namespace PatientTrackerWPF
 
 
 
-        // ─── FIXED: Edit/Delete Options ──────────────────────────────────────
+        // ─── : Edit/Delete Options ──────────────────────────────────────
         private void ScoresGrid_MouseDoubleClick_1(object sender, MouseButtonEventArgs e)
         {
             if (ScoresGrid.SelectedItem is ScoreEntry selected)
@@ -916,13 +1436,13 @@ namespace PatientTrackerWPF
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    // EDIT: Load into input fields
+                    // EDIT: Load into input fields - FIXED for null values
                     PatientIdBox.Text = selected.PatientId;
-                    Phq9Box.Text = selected.PHQ9 == -1 ? "" : selected.PHQ9.ToString();
-                    Gad7Box.Text = selected.GAD7 == -1 ? "" : selected.GAD7.ToString();
-                    Bdi2Box.Text = selected.BDI2 == -1 ? "" : selected.BDI2.ToString();
-                    PCL5Total.Text = selected.PCL5 == -1 ? "" : selected.PCL5.ToString();
-                    YBOCS.Text = selected.YBOCS == -1 ? "" : selected.YBOCS.ToString();
+                    Phq9Box.Text = selected.PHQ9.HasValue ? selected.PHQ9.Value.ToString() : "";  // FIXED
+                    Gad7Box.Text = selected.GAD7.HasValue ? selected.GAD7.Value.ToString() : "";  // FIXED
+                    Bdi2Box.Text = selected.BDI2.HasValue ? selected.BDI2.Value.ToString() : "";  // FIXED
+                    PCL5Total.Text = selected.PCL5.HasValue ? selected.PCL5.Value.ToString() : "";  // FIXED
+                    YBOCS.Text = selected.YBOCS.HasValue ? selected.YBOCS.Value.ToString() : "";  // FIXED
                     NoteBox.Text = selected.Note;
                     DatePicker.SelectedDate = selected.Date;
 

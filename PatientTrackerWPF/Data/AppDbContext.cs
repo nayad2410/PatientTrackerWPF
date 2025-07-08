@@ -58,12 +58,16 @@ namespace PatientTrackerWPF.Data
                 entity.Property(e => e.UpdatedBy)
                     .HasMaxLength(100);
 
-                // Add constraints for score ranges
-                entity.HasCheckConstraint("CK_ScoreEntry_PHQ9_Range", "[PHQ9] >= 0 AND [PHQ9] <= 100");
-                entity.HasCheckConstraint("CK_ScoreEntry_GAD7_Range", "[GAD7] >= 0 AND [GAD7] <= 100");
-                entity.HasCheckConstraint("CK_ScoreEntry_PCL5_Range", "[PCL5] >= 0 AND [PCL5] <= 100");
-                entity.HasCheckConstraint("CK_ScoreEntry_BDI2_Range", "[BDI2] >= 0 AND [BDI2] <= 100");
-                entity.HasCheckConstraint("CK_ScoreEntry_YBOCS_Range", "[YBOCS] >= 0 AND [YBOCS] <= 100");
+                // Configure foreign key relationships - FIXED
+                entity.HasOne(e => e.CreatedByUser)
+                    .WithMany(u => u.ScoreEntriesCreated)
+                    .HasForeignKey(e => e.CreatedByUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(e => e.UpdatedByUser)
+                    .WithMany(u => u.ScoreEntriesUpdated)
+                    .HasForeignKey(e => e.UpdatedByUserId)
+                    .OnDelete(DeleteBehavior.NoAction);
 
                 // Create indexes for better performance
                 entity.HasIndex(e => e.PatientId)
@@ -74,6 +78,12 @@ namespace PatientTrackerWPF.Data
 
                 entity.HasIndex(e => new { e.PatientId, e.Date })
                     .HasDatabaseName("IX_ScoreEntry_PatientId_Date");
+
+                entity.HasIndex(e => e.CreatedByUserId)
+                    .HasDatabaseName("IX_ScoreEntry_CreatedByUserId");
+
+                entity.HasIndex(e => e.UpdatedByUserId)
+                    .HasDatabaseName("IX_ScoreEntry_UpdatedByUserId");
 
                 entity.ToTable("ScoreEntries");
             });
@@ -133,9 +143,6 @@ namespace PatientTrackerWPF.Data
                 entity.HasIndex(e => e.Email)
                     .IsUnique()
                     .HasDatabaseName("IX_User_Email");
-
-                // Check constraints
-                entity.HasCheckConstraint("CK_User_Role", "[Role] IN ('Admin', 'Doctor', 'Nurse', 'Researcher', 'User')");
 
                 entity.ToTable("Users");
             });
@@ -255,12 +262,10 @@ namespace PatientTrackerWPF.Data
                 {
                     case EntityState.Added:
                         entry.Entity.CreatedAt = DateTime.UtcNow;
-                        // Will be set by the application with current user
                         break;
 
                     case EntityState.Modified:
                         entry.Entity.UpdatedAt = DateTime.UtcNow;
-                        // Will be set by the application with current user
                         break;
                 }
             }

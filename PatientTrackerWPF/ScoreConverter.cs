@@ -1,4 +1,6 @@
-﻿using System;
+﻿// REPLACE your ScoreConverter class with this FIXED version:
+
+using System;
 using System.Globalization;
 using System.Windows.Data;
 
@@ -8,24 +10,40 @@ namespace PatientTrackerWPF
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if (value is int score)
+            // FIXED: Handle null values and display as "—"
+            if (value == null) return "—";
+
+            // Handle nullable integers
+            if (value is int nullableInt)
             {
-                return score == -1 ? "—" : score.ToString();
+                return nullableInt.ToString();
             }
-            return "—";
+
+            // Handle regular integers (legacy -1 values)
+            if (value is int regularInt)
+            {
+                return regularInt == -1 ? "—" : regularInt.ToString();
+            }
+
+            return value.ToString();
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if (value is string str)
+            // Handle conversion back from string to nullable int
+            if (targetType == typeof(int?) || targetType == typeof(int))
             {
-                if (str == "—" || string.IsNullOrWhiteSpace(str))
-                    return -1;
+                if (value is string str)
+                {
+                    if (string.IsNullOrWhiteSpace(str) || str == "—")
+                        return null;
 
-                if (int.TryParse(str, out int result))
-                    return result;
+                    if (int.TryParse(str, out int result))
+                        return result;
+                }
             }
-            return -1;
+
+            return value;
         }
     }
 }

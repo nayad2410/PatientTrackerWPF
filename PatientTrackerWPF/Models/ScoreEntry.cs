@@ -14,25 +14,25 @@ namespace PatientTrackerWPF.Models
         [Display(Name = "Patient ID")]
         public string PatientId { get; set; } = string.Empty;
 
-        [Range(0, 100)]
+        [Range(0, 27)]
         [Display(Name = "PHQ-9 Score")]
-        public int PHQ9 { get; set; }
+        public int? PHQ9 { get; set; }
 
-        [Range(0, 100)]
+        [Range(0, 21)]
         [Display(Name = "GAD-7 Score")]
-        public int GAD7 { get; set; }
+        public int? GAD7 { get; set; }
 
-        [Range(0, 100)]
+        [Range(0, 80)]
         [Display(Name = "PCL-5 Score")]
-        public int PCL5 { get; set; }
+        public int? PCL5 { get; set; }
 
-        [Range(0, 100)]
+        [Range(0, 63)]
         [Display(Name = "BDI-II Score")]
-        public int BDI2 { get; set; }
+        public int? BDI2 { get; set; }
 
-        [Range(0, 100)]
+        [Range(0, 40)]
         [Display(Name = "Y-BOCS Score")]
-        public int YBOCS { get; set; }
+        public int? YBOCS { get; set; }
 
         [StringLength(2000)]
         [Display(Name = "Treatment Notes")]
@@ -56,13 +56,24 @@ namespace PatientTrackerWPF.Models
         [Display(Name = "Created By")]
         public string? CreatedBy { get; set; }
 
+        // Foreign key to User table
+        public int? CreatedByUserId { get; set; }
+        public virtual User? CreatedByUser { get; set; }
+
         [StringLength(100)]
         [Display(Name = "Updated By")]
         public string? UpdatedBy { get; set; }
 
-        // Computed properties for easier analysis
+        public int? UpdatedByUserId { get; set; }
+        public virtual User? UpdatedByUser { get; set; }
+
+        // Computed properties for easier analysis - Updated for nullable ints
         [NotMapped]
-        public bool HasAnyScores => PHQ9 > 0 || GAD7 > 0 || PCL5 > 0 || BDI2 > 0 || YBOCS > 0;
+        public bool HasAnyScores => (PHQ9.HasValue && PHQ9 > 0) ||
+                                   (GAD7.HasValue && GAD7 > 0) ||
+                                   (PCL5.HasValue && PCL5 > 0) ||
+                                   (BDI2.HasValue && BDI2 > 0) ||
+                                   (YBOCS.HasValue && YBOCS > 0);
 
         [NotMapped]
         public bool IsNotesOnly => !HasAnyScores && !string.IsNullOrWhiteSpace(Note);
@@ -70,38 +81,64 @@ namespace PatientTrackerWPF.Models
         [NotMapped]
         public string DisplayText => $"{PatientId} - {Date:yyyy-MM-dd} - {(IsNotesOnly ? "Notes Only" : "Assessment")}";
 
-        // Helper method to get severity level based on PHQ-9 score
+        // FIXED: Helper method to get severity level based on PHQ-9 score
         [NotMapped]
         public string PHQ9Severity
         {
             get
             {
-                return PHQ9 switch
+                if (!PHQ9.HasValue) return "Not Assessed";
+
+                var score = PHQ9.Value; // Extract value first to avoid pattern matching issue
+                return score switch
                 {
                     0 => "None",
                     >= 1 and <= 4 => "Minimal",
                     >= 5 and <= 9 => "Mild",
                     >= 10 and <= 14 => "Moderate",
                     >= 15 and <= 19 => "Moderately Severe",
-                    >= 20 => "Severe",
+                    >= 20 and <= 27 => "Severe",
                     _ => "Invalid"
                 };
             }
         }
 
-        // Helper method to get severity level based on GAD-7 score
+        // FIXED: Helper method to get severity level based on GAD-7 score
         [NotMapped]
         public string GAD7Severity
         {
             get
             {
-                return GAD7 switch
+                if (!GAD7.HasValue) return "Not Assessed";
+
+                var score = GAD7.Value; // Extract value first to avoid pattern matching issue
+                return score switch
                 {
                     0 => "None",
                     >= 1 and <= 4 => "Minimal",
                     >= 5 and <= 9 => "Mild",
                     >= 10 and <= 14 => "Moderate",
-                    >= 15 => "Severe",
+                    >= 15 and <= 21 => "Severe",
+                    _ => "Invalid"
+                };
+            }
+        }
+
+        // Helper method for BDI-II severity
+        [NotMapped]
+        public string BDI2Severity
+        {
+            get
+            {
+                if (!BDI2.HasValue) return "Not Assessed";
+
+                var score = BDI2.Value; // Extract value first to avoid pattern matching issue
+                return score switch
+                {
+                    >= 0 and <= 13 => "Minimal",
+                    >= 14 and <= 19 => "Mild",
+                    >= 20 and <= 28 => "Moderate",
+                    >= 29 and <= 63 => "Severe",
                     _ => "Invalid"
                 };
             }

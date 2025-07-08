@@ -216,6 +216,39 @@
                                  TextChanged="FilterBox_TextChanged"/>
                         </StackPanel>
 
+
+
+                      
+
+                        <Button Content="Professional Report"
+        Click="GenerateProfessionalReport_Click"
+        Width="130" Height="25"
+        Background="DarkBlue" Foreground="White"
+        FontWeight="Bold" BorderThickness="0"
+        Cursor="Hand" FontSize="10"
+        Margin="0,0,8,0">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                CornerRadius="5"
+                                Padding="6">
+                                                    <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#000080"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <!-- Export Buttons -->
                         <Button Content="Export CSV"
                             Click="ExportToCsv_Click"
@@ -246,7 +279,7 @@
                             </Button.Style>
                         </Button>
 
-                        <Button Content="Export PNG"
+                        <!--<Button Content="Export PNG"
                             Click="ExportToPng_Click"
                             Width="85" Height="25"
                             Background="DarkCyan" Foreground="White"
@@ -273,7 +306,7 @@
                                     </Setter>
                                 </Style>
                             </Button.Style>
-                        </Button>
+                        </Button>-->
 
                         <Button x:Name="btnExportTopPng" Content="All-Time Remissions"
                             Click="ShowAllTimeRemissions_Click"
@@ -916,26 +949,28 @@
             </Grid>
         </ScrollViewer>
 
-        <!-- Export Layout Panel - SIMPLE FIXED WIDTH + SCROLLVIEWER -->
-        <Border x:Name="ExportLayout"
-                Panel.ZIndex="100"
-                Width="{StaticResource ReportWidth}"
-                Background="White"
-                BorderBrush="{StaticResource PrimaryBrush}"
-                BorderThickness="2"
-                Padding="20"
-                Margin="20"
-                Visibility="Collapsed"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top">
 
-            <!-- ExportContent - Fixed design width -->
-            <StackPanel x:Name="ExportContent" Width="{StaticResource ReportWidth}">
+        <!-- Export Layout Panel - FIXED CONFIGURATION -->
+        <Border x:Name="ExportLayout"
+        Visibility="Collapsed"
+        Background="White"
+        BorderBrush="#CCCCCC"
+        BorderThickness="1"
+        Padding="20"
+        Margin="20"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Top"
+        Panel.ZIndex="100">
+
+            <!-- FIXED: Use StackPanel with no height constraints -->
+            <StackPanel x:Name="ExportContent" 
+                Width="900" 
+                Orientation="Vertical">
 
                 <!-- Export Header with Logo -->
                 <Border Background="{StaticResource PrimaryBrush}" 
-                        Padding="15" 
-                        Margin="0,0,0,20">
+                Padding="15" 
+                Margin="0,0,0,20">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -944,20 +979,20 @@
 
                         <!-- Logo -->
                         <Image Source="/Images/Logo_Reconnect1.png"
-                               Width="150" Height="40"
-                               Stretch="Uniform"
-                               RenderOptions.BitmapScalingMode="HighQuality"
-                               RenderOptions.EdgeMode="Aliased"
-                               Margin="0,0,20,0"/>
+                       Width="150" Height="40"
+                       Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       RenderOptions.EdgeMode="Aliased"
+                       Margin="0,0,20,0"/>
 
                         <!-- Header Text -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="Patient Progress Report"
-                                       FontSize="24" FontWeight="Bold"
-                                       Foreground="White" HorizontalAlignment="Center"/>
+                               FontSize="24" FontWeight="Bold"
+                               Foreground="White" HorizontalAlignment="Center"/>
                             <TextBlock Text="Mental Health Assessment Report"
-                                       FontSize="14" Foreground="LightGray"
-                                       HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                               FontSize="14" Foreground="LightGray"
+                               HorizontalAlignment="Center" Margin="0,5,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -965,22 +1000,22 @@
                 <!-- Patient Info -->
                 <StackPanel Margin="0,0,0,20">
                     <TextBlock x:Name="ExportPatientId" 
-                               Text="Patient ID: "
-                               FontSize="16" FontWeight="Bold"
-                               Foreground="{StaticResource PrimaryBrush}"/>
+                       Text="Patient ID: "
+                       FontSize="16" FontWeight="Bold"
+                       Foreground="{StaticResource PrimaryBrush}"/>
                     <TextBlock x:Name="ExportDate"
-                               Text="Report Generated: "
-                               FontSize="12" Foreground="Gray"
-                               Margin="0,5,0,0"/>
+                       Text="Report Generated: "
+                       FontSize="12" Foreground="Gray"
+                       Margin="0,5,0,0"/>
                 </StackPanel>
 
                 <!-- Chart Section with Legend -->
                 <Border BorderBrush="#DDD" BorderThickness="1" Padding="15" Margin="0,0,0,20">
                     <StackPanel>
                         <TextBlock Text="Progress Chart"
-                                   FontSize="16" FontWeight="Bold"
-                                   Foreground="{StaticResource PrimaryBrush}" 
-                                   Margin="0,0,0,15"/>
+                           FontSize="16" FontWeight="Bold"
+                           Foreground="{StaticResource PrimaryBrush}" 
+                           Margin="0,0,0,15"/>
 
                         <!-- Chart Legend -->
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,10">
@@ -1008,49 +1043,51 @@
 
                         <!-- Chart Image -->
                         <Image x:Name="ExportChartImage"
-                               Stretch="Uniform"
-                               MaxHeight="350"/>
+                       Stretch="Uniform"
+                       Height="350"/>
                     </StackPanel>
                 </Border>
 
+                <!-- Treatment Notes Section - FIXED: NO ScrollViewer, NO MaxHeight -->
                 <Border BorderBrush="#DDD" BorderThickness="1" Padding="15" Margin="0,0,0,20">
                     <StackPanel>
                         <TextBlock Text="Recent Treatment Notes"
-                   FontSize="16" FontWeight="Bold"
-                   Foreground="{StaticResource PrimaryBrush}" 
-                   Margin="0,0,0,15"/>
-                        <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
-                            <TextBlock x:Name="ExportNoteText"
-                       Text="No treatment notes available."
-                       FontSize="11"
-                       TextWrapping="Wrap"
-                       LineHeight="16"
-                       Foreground="Black"/>
-                        </ScrollViewer>
+                           FontSize="16" FontWeight="Bold"
+                           Foreground="{StaticResource PrimaryBrush}" 
+                           Margin="0,0,0,15"/>
+
+                        <!-- FIXED: Remove ScrollViewer and MaxHeight constraints -->
+                        <TextBlock x:Name="ExportNoteText"
+                           Text="No treatment notes available."
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           LineHeight="16"
+                           Foreground="Black"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Data Grid Section -->
+                <!-- Data Grid Section - FIXED: NO MaxHeight constraint -->
                 <Border BorderBrush="#DDD" BorderThickness="1" Padding="15">
                     <StackPanel>
                         <TextBlock Text="Assessment History"
-                                   FontSize="16" FontWeight="Bold"
-                                   Foreground="{StaticResource PrimaryBrush}" 
-                                   Margin="0,0,0,15"/>
+                           FontSize="16" FontWeight="Bold"
+                           Foreground="{StaticResource PrimaryBrush}" 
+                           Margin="0,0,0,15"/>
+
+                        <!-- FIXED: Remove MaxHeight="400" constraint -->
                         <DataGrid x:Name="ExportScoreGrid"
-                                  AutoGenerateColumns="False"
-                                  CanUserAddRows="False"
-                                  HeadersVisibility="Column"
-                                  GridLinesVisibility="All"
-                                  Background="White"
-                                  BorderThickness="1"
-                                  BorderBrush="#DDD"
-                                  Height="400">
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="All"
+                          Background="White"
+                          BorderThickness="1"
+                          BorderBrush="#DDD"
+                          Height="Auto">
 
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <Setter Property="MinHeight" Value="35"/>
-                                    <Setter Property="MaxHeight" Value="80"/>
                                 </Style>
                             </DataGrid.RowStyle>
 
@@ -1068,8 +1105,8 @@
 
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Date"
-                                                    Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}"
-                                                    Width="110">
+                                            Binding="{Binding Date, StringFormat={}{0:yyyy-MM-dd}}"
+                                            Width="110">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1080,8 +1117,8 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="PHQ-9"
-                                                    Binding="{Binding PHQ9}"
-                                                    Width="70">
+                                            Binding="{Binding PHQ9, Converter={StaticResource ScoreConverter}}"
+                                            Width="70">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1092,8 +1129,8 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="GAD-7"
-                                                    Binding="{Binding GAD7}"
-                                                    Width="70">
+                                            Binding="{Binding GAD7, Converter={StaticResource ScoreConverter}}"
+                                            Width="70">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1104,8 +1141,8 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="BDI-II"
-                                                    Binding="{Binding BDI2}"
-                                                    Width="70">
+                                            Binding="{Binding BDI2, Converter={StaticResource ScoreConverter}}"
+                                            Width="70">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1116,8 +1153,8 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="PCL-5"
-                                                    Binding="{Binding PCL5}"
-                                                    Width="70">
+                                            Binding="{Binding PCL5, Converter={StaticResource ScoreConverter}}"
+                                            Width="70">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1128,8 +1165,8 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Y-BOCS"
-                                                    Binding="{Binding YBOCS}"
-                                                    Width="70">
+                                            Binding="{Binding YBOCS, Converter={StaticResource ScoreConverter}}"
+                                            Width="70">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -1140,15 +1177,14 @@
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
                                 <DataGridTextColumn Header="Treatment Notes"
-                                                    Binding="{Binding Note}"
-                                                    Width="280">
+                                            Binding="{Binding Note}"
+                                            Width="280">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="TextWrapping" Value="Wrap"/>
                                             <Setter Property="FontSize" Value="10"/>
                                             <Setter Property="Padding" Value="5"/>
                                             <Setter Property="VerticalAlignment" Value="Top"/>
-                                            <Setter Property="MaxHeight" Value="70"/>
                                             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>

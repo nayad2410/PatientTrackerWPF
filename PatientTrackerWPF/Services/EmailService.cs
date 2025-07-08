@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Configuration;
+using System;
 using System.Net;
 using System.Net.Mail;
 using System.Threading.Tasks;
@@ -7,13 +8,27 @@ namespace PatientTrackerWPF.Services
 {
     public class EmailService
     {
-        private readonly string smtpServer = "smtp.gmail.com"; // Configure for your email provider
-        private readonly int smtpPort = 587;
-        private readonly string emailUsername = "your-app-email@gmail.com"; // Configure
-        private readonly string emailPassword = "your-app-password"; // Use app-specific password
-        private readonly string fromEmail = "your-app-email@gmail.com";
-        private readonly string fromName = "Reconnect Progress Tracker";
+        private readonly string smtpServer;
+        private readonly int smtpPort;
+        private readonly bool enableSsl;
+        private readonly string emailUsername;
+        private readonly string emailPassword;
+        private readonly string fromEmail;
+        private readonly string fromName;
+        private readonly string resetLinkBaseUrl;
 
+        public EmailService(IConfiguration configuration)
+        {
+            var emailSettings = configuration.GetSection("EmailSettings");
+            smtpServer = emailSettings["SmtpServer"];
+            smtpPort = int.Parse(emailSettings["SmtpPort"]);
+            enableSsl = bool.Parse(emailSettings["EnableSsl"]);
+            emailUsername = emailSettings["Username"];
+            emailPassword = emailSettings["Password"];
+            fromEmail = emailSettings["FromEmail"];
+            fromName = emailSettings["FromName"];
+            resetLinkBaseUrl = emailSettings["ResetLinkBaseUrl"];
+        }
         public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string resetToken, string fullName)
         {
             try

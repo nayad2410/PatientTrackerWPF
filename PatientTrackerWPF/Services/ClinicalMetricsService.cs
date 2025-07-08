@@ -43,7 +43,7 @@ namespace PatientTrackerWPF.Services
             {
                 var patientId = kvp.Key;
                 var entries = kvp.Value
-                    .Where(e => e.BDI2 > 0) // Only entries with BDI-II scores
+                    .Where(e => e.BDI2.HasValue && e.BDI2.Value >= 0) // FIXED: Handle nullable
                     .OrderBy(e => e.Date)
                     .ToList();
 
@@ -53,17 +53,17 @@ namespace PatientTrackerWPF.Services
                 var mostRecent = entries.Last();
 
                 // Only include patients who started with BDI-II ≥ 14 (moderate depression or higher)
-                if (baseline.BDI2 < 14) continue;
+                if (baseline.BDI2.Value < 14) continue; // FIXED: Use .Value
 
-                var percentImprovement = ((double)(baseline.BDI2 - mostRecent.BDI2) / baseline.BDI2) * 100;
+                var percentImprovement = ((double)(baseline.BDI2.Value - mostRecent.BDI2.Value) / baseline.BDI2.Value) * 100; // FIXED: Use .Value
                 var hasResponse = percentImprovement >= 50; // ≥50% improvement
-                var hasRemission = mostRecent.BDI2 < 14; // Score drops below 14
+                var hasRemission = mostRecent.BDI2.Value < 14; // FIXED: Use .Value
 
                 var outcome = new PatientOutcome
                 {
                     PatientId = patientId,
-                    BaselineBDI2 = baseline.BDI2,
-                    MostRecentBDI2 = mostRecent.BDI2,
+                    BaselineBDI2 = baseline.BDI2.Value, // FIXED: Use .Value
+                    MostRecentBDI2 = mostRecent.BDI2.Value, // FIXED: Use .Value
                     BaselineDate = baseline.Date,
                     MostRecentDate = mostRecent.Date,
                     PercentImprovement = percentImprovement,
@@ -110,17 +110,19 @@ namespace PatientTrackerWPF.Services
             report.AppendLine();
 
             report.AppendLine("PATIENT DETAILS:");
-            report.AppendLine("Patient ID\tBaseline\tMost Recent\tImprovement\tResponse\tRemission\tDays");
+            report.AppendLine(string.Format("{0,-12} {1,-10} {2,-12} {3,-14} {4,-10} {5,-10} {6,-5}",
+                                            "Patient ID", "Baseline", "Most Recent", "Improvement", "Response", "Remission", "Days"));
 
             foreach (var outcome in metrics.PatientOutcomes.OrderByDescending(p => p.PercentImprovement))
             {
-                report.AppendLine($"{outcome.PatientId}\t" +
-                                $"{outcome.BaselineBDI2}\t" +
-                                $"{outcome.MostRecentBDI2}\t" +
-                                $"{outcome.PercentImprovement:F1}%\t" +
-                                $"{(outcome.HasResponse ? "Yes" : "No")}\t" +
-                                $"{(outcome.HasRemission ? "Yes" : "No")}\t" +
-                                $"{outcome.DaysBetweenAssessments}");
+                report.AppendLine(string.Format("{0,-12} {1,-10} {2,-12} {3,-14} {4,-10} {5,-10} {6,-5}",
+                                                outcome.PatientId,
+                                                outcome.BaselineBDI2,
+                                                outcome.MostRecentBDI2,
+                                                $"{outcome.PercentImprovement:F1}%",
+                                                outcome.HasResponse ? "Yes" : "No",
+                                                outcome.HasRemission ? "Yes" : "No",
+                                                outcome.DaysBetweenAssessments));
             }
 
             return report.ToString();
@@ -130,7 +132,7 @@ namespace PatientTrackerWPF.Services
         public PatientOutcome? GetPatientOutcome(string patientId, List<ScoreEntry> entries)
         {
             var bdi2Entries = entries
-                .Where(e => e.BDI2 > 0)
+                .Where(e => e.BDI2.HasValue && e.BDI2.Value >= 0) // FIXED: Handle nullable
                 .OrderBy(e => e.Date)
                 .ToList();
 
@@ -139,20 +141,20 @@ namespace PatientTrackerWPF.Services
             var baseline = bdi2Entries.First();
             var mostRecent = bdi2Entries.Last();
 
-            if (baseline.BDI2 < 14) return null; // Must start with moderate depression or higher
+            if (baseline.BDI2.Value < 14) return null; // FIXED: Use .Value
 
-            var percentImprovement = ((double)(baseline.BDI2 - mostRecent.BDI2) / baseline.BDI2) * 100;
+            var percentImprovement = ((double)(baseline.BDI2.Value - mostRecent.BDI2.Value) / baseline.BDI2.Value) * 100; // FIXED: Use .Value
 
             return new PatientOutcome
             {
                 PatientId = patientId,
-                BaselineBDI2 = baseline.BDI2,
-                MostRecentBDI2 = mostRecent.BDI2,
+                BaselineBDI2 = baseline.BDI2.Value, // FIXED: Use .Value
+                MostRecentBDI2 = mostRecent.BDI2.Value, // FIXED: Use .Value
                 BaselineDate = baseline.Date,
                 MostRecentDate = mostRecent.Date,
                 PercentImprovement = percentImprovement,
                 HasResponse = percentImprovement >= 50,
-                HasRemission = mostRecent.BDI2 < 14,
+                HasRemission = mostRecent.BDI2.Value < 14, // FIXED: Use .Value
                 TotalAssessments = bdi2Entries.Count,
                 DaysBetweenAssessments = (mostRecent.Date - baseline.Date).Days
             };
