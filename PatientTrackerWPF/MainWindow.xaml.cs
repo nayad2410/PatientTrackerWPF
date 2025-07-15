@@ -22,6 +22,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
+using System.Runtime.Versioning;
 using Separator = LiveCharts.Wpf.Separator;
 
 //  these for the professional report 
@@ -42,16 +43,19 @@ using Brushes = System.Windows.Media.Brushes;
 
 namespace PatientTrackerWPF
 {
+    [SupportedOSPlatform("windows")]
     public partial class MainWindow : Window
     {
         // ─── Fields ────────────────────────────────────────────────────────────
         private string filterId = "";
         private Dictionary<string, List<ScoreEntry>> patientData = new();
-        private ClinicalMetricsService metricsService = new();
-        private RemissionTrackingService remissionService = new();
-        private readonly AuthenticationService? authService;
+        private ClinicalMetricsService metricsService;
+        private RemissionTrackingService remissionService;
+        private readonly AuthenticationService authService;
+        private readonly ICurrentUserService currentUserService;
         private ClinicalMetricsService.ClinicalMetrics? currentMetrics;
         private List<ScoreEntry> currentPatientEntries = new List<ScoreEntry>();
+
 
         // ─── Chart Collections ────────────────────────────────────────────────
         public SeriesCollection ScoreSeriesCollection { get; set; } = new SeriesCollection();
@@ -61,25 +65,68 @@ namespace PatientTrackerWPF
         public ChartValues<DateTimePoint> Pcl5Values { get; set; } = new();
         public ChartValues<DateTimePoint> YbocsValues { get; set; } = new();
 
-        public MainWindow()
+        public MainWindow(
+               AuthenticationService authenticationService,
+               ICurrentUserService currentUserService,
+               ClinicalMetricsService clinicalMetricsService,
+               RemissionTrackingService remissionTrackingService)
         {
             InitializeComponent();
 
-            // Added  ScoreConverter to resources programmatically if XAML fails
+            // Assign injected services
+            authService = authenticationService;
+            this.currentUserService = currentUserService;
+            metricsService = clinicalMetricsService;
+            remissionService = remissionTrackingService;
+
+            // Added ScoreConverter to resources programmatically if XAML fails
             if (!Resources.Contains("ScoreConverter"))
             {
                 Resources.Add("ScoreConverter", new ScoreConverter());
             }
+
             DataContext = this;
             InitializeChart();
             SetupResponsiveLayout();
+            UpdateUserDisplay();
         }
 
-        public MainWindow(AuthenticationService authenticationService) : this()
+        private void UpdateUserDisplay()
         {
-            authService = authenticationService;
-            CurrentUserText.Text = authService.GetCurrentUserFullName();
+            try
+            {
+                // Update user display - with null checks
+                if (authService?.CurrentUser != null)
+                {
+                    CurrentUserText.Text = authService.GetCurrentUserFullName();
+                    UserRoleText.Text = authService.CurrentUser?.Role ?? "Unknown Role";
+                    this.Title = $"Reconnect Progress Tracker - {authService.GetCurrentUserFullName()} ({authService.CurrentUser?.Role})";
+                }
+                else if (currentUserService?.CurrentUser != null)
+                {
+                    CurrentUserText.Text = currentUserService.CurrentUser.FullName ?? currentUserService.CurrentUser.Username ?? "Unknown User";
+                    UserRoleText.Text = currentUserService.CurrentUser.Role ?? "Unknown Role";
+                    this.Title = $"Reconnect Progress Tracker - {CurrentUserText.Text} ({UserRoleText.Text})";
+                }
+                else
+                {
+                    CurrentUserText.Text = "Unknown User";
+                    UserRoleText.Text = "Unknown Role";
+                    this.Title = "Reconnect Progress Tracker";
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in UpdateUserDisplay: {ex.Message}");
+                // Set fallback values
+                CurrentUserText.Text = "System User";
+                UserRoleText.Text = "User";
+                this.Title = "Reconnect Progress Tracker";
+            }
         }
+
+
+
 
         // ─── Responsive Layout ────────────────────────────────────────────────
         private void SetupResponsiveLayout()
@@ -183,10 +230,23 @@ namespace PatientTrackerWPF
             });
 
             ScoresGrid.ItemsSource = new List<ScoreEntry>();
+
+            //if (!Resources.Contains("ScoreConverter"))
+            //{
+            //    Resources.Add("ScoreConverter", new ScoreConverter());
+            //}
+            //DataContext = this;
+            //InitializeChart();
+            //SetupResponsiveLayout();
+
+
+
+
         }
 
 
         // ─── Add Score Click with Score Validation ──────────────────────────────────────────────────
+        // Updated AddScore_Click method with proper user tracking
         private void AddScore_Click(object sender, RoutedEventArgs e)
         {
             var id = PatientIdBox.Text.Trim();
@@ -196,36 +256,36 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            // FIXED: Validate score ranges with CORRECT ranges for each assessment
+            // Validate score ranges
             var validationErrors = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(Phq9Box.Text))
             {
-                if (!int.TryParse(Phq9Box.Text, out int phq9) || phq9 < 0 || phq9 > 27)  // FIXED: 0-27
+                if (!int.TryParse(Phq9Box.Text, out int phq9) || phq9 < 0 || phq9 > 27)
                     validationErrors.Add("PHQ-9 must be between 0 and 27");
             }
 
             if (!string.IsNullOrWhiteSpace(Gad7Box.Text))
             {
-                if (!int.TryParse(Gad7Box.Text, out int gad7) || gad7 < 0 || gad7 > 21)  // FIXED: 0-21
+                if (!int.TryParse(Gad7Box.Text, out int gad7) || gad7 < 0 || gad7 > 21)
                     validationErrors.Add("GAD-7 must be between 0 and 21");
             }
 
             if (!string.IsNullOrWhiteSpace(Bdi2Box.Text))
             {
-                if (!int.TryParse(Bdi2Box.Text, out int bdi2) || bdi2 < 0 || bdi2 > 63)  // FIXED: 0-63
+                if (!int.TryParse(Bdi2Box.Text, out int bdi2) || bdi2 < 0 || bdi2 > 63)
                     validationErrors.Add("BDI-II must be between 0 and 63");
             }
 
             if (!string.IsNullOrWhiteSpace(PCL5Total.Text))
             {
-                if (!int.TryParse(PCL5Total.Text, out int pcl5) || pcl5 < 0 || pcl5 > 80)  // CORRECT: 0-80
+                if (!int.TryParse(PCL5Total.Text, out int pcl5) || pcl5 < 0 || pcl5 > 80)
                     validationErrors.Add("PCL-5 must be between 0 and 80");
             }
 
             if (!string.IsNullOrWhiteSpace(YBOCS.Text))
             {
-                if (!int.TryParse(YBOCS.Text, out int ybocs) || ybocs < 0 || ybocs > 40)  // FIXED: 0-40
+                if (!int.TryParse(YBOCS.Text, out int ybocs) || ybocs < 0 || ybocs > 40)
                     validationErrors.Add("Y-BOCS must be between 0 and 40");
             }
 
@@ -244,6 +304,14 @@ namespace PatientTrackerWPF
 
             var selectedDate = DatePicker.SelectedDate ?? DateTime.Today;
 
+            // Get current user info for audit fields
+            var currentUsername = authService?.GetCurrentUsername() ??
+                                 currentUserService?.CurrentUser?.Username ??
+                                 "Unknown";
+
+            var currentUserId = authService?.CurrentUser?.Id ??
+                               currentUserService?.CurrentUser?.Id;
+
             // Check for duplicate date entries
             var existingEntry = patientData[id].FirstOrDefault(e => e.Date.Date == selectedDate.Date);
             if (existingEntry != null)
@@ -257,15 +325,16 @@ namespace PatientTrackerWPF
 
                 if (result == MessageBoxResult.Yes)
                 {
-                    // Update existing entry - FIXED: Use nullable parsing
+                    // Update existing entry
                     existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
                     existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
                     existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
                     existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
                     existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
                     existingEntry.Note = NoteBox.Text.Trim();
-                    existingEntry.CreatedBy = authService?.GetCurrentUsername() ?? "Unknown";
-                    existingEntry.CreatedAt = DateTime.UtcNow;
+                    existingEntry.UpdatedBy = currentUsername;
+                    existingEntry.UpdatedByUserId = currentUserId;
+                    existingEntry.UpdatedAt = DateTime.UtcNow;
                 }
                 else
                 {
@@ -274,7 +343,7 @@ namespace PatientTrackerWPF
             }
             else
             {
-                // Create new entry - FIXED: Use nullable parsing
+                // Create new entry
                 var entry = new ScoreEntry
                 {
                     PatientId = id,
@@ -285,7 +354,8 @@ namespace PatientTrackerWPF
                     YBOCS = TryParseOrNull(YBOCS.Text),
                     Note = NoteBox.Text.Trim(),
                     Date = selectedDate,
-                    CreatedBy = authService?.GetCurrentUsername() ?? "Unknown",
+                    CreatedBy = currentUsername,
+                    CreatedByUserId = currentUserId,
                     CreatedAt = DateTime.UtcNow
                 };
                 patientData[id].Add(entry);
@@ -306,6 +376,80 @@ namespace PatientTrackerWPF
             ScoresGrid.ItemsSource = patientData[id];
         }
 
+
+        private void LogoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to logout?",
+                "Confirm Logout",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                // Perform logout
+                authService?.Logout();
+                currentUserService?.ClearCurrentUser();
+
+                // Clear any sensitive data
+                patientData.Clear();
+                currentPatientEntries.Clear();
+                currentMetrics = null;
+
+                // Clear UI
+                PatientSelector.Items.Clear();
+                ScoresGrid.ItemsSource = null;
+
+                // Clear input fields
+                PatientIdBox.Clear();
+                Phq9Box.Clear();
+                Gad7Box.Clear();
+                Bdi2Box.Clear();
+                PCL5Total.Clear();
+                YBOCS.Clear();
+                NoteBox.Clear();
+
+                // Reset chart
+                Phq9Values.Clear();
+                Gad7Values.Clear();
+                Bdi2Values.Clear();
+                Pcl5Values.Clear();
+                YbocsValues.Clear();
+
+                // Show logout message
+                MessageBox.Show("You have been logged out successfully.", "Logged Out",
+                               MessageBoxButton.OK, MessageBoxImage.Information);
+
+                // Close this window and show login window from DI
+                var loginWindow = App.GetService<LoginWindow>();
+                loginWindow.Show();
+                this.Close();
+            }
+        }
+
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (authService?.IsAuthenticated == true)
+            {
+                var result = MessageBox.Show(
+                    "Are you sure you want to exit? You will be logged out.",
+                    "Confirm Exit",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.No)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                // Clean logout
+                authService?.Logout();
+            }
+
+            base.OnClosing(e);
+        }
         private int? TryParseOrNull(string txt)
             => int.TryParse(txt, out var v) ? v : null;  // Return null instead of -1
 
@@ -640,6 +784,7 @@ namespace PatientTrackerWPF
             }
         }
 
+        [SupportedOSPlatform("windows")]
         private DrawingBitmap CreateProfessionalClinicalReport(string patientId, List<ScoreEntry> entries)
         {
             // Report dimensions

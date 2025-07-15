@@ -8,17 +8,22 @@ namespace PatientTrackerWPF
 {
     public partial class LoginWindow : Window
     {
-        private readonly AuthenticationService authService;
+        private readonly ICurrentUserService _currentUserService;
+        private readonly AuthenticationService _authService;
 
-        public LoginWindow()
+        // DI Constructor
+        public LoginWindow(ICurrentUserService currentUserService, AuthenticationService authService)
         {
             InitializeComponent();
-            authService = new AuthenticationService();
+            _currentUserService = currentUserService;
+            _authService = authService;
 
-            // Set focus to username box
+
+            // TEMPORARY: Generate fresh admin hash
+      /*      _authService.GenerateAndTestAdminHash();*/
+
+
             Loaded += (s, e) => UsernameTextBox.Focus();
-
-            // Handle Enter key in password box
             PasswordTextBox.KeyDown += PasswordTextBox_KeyDown;
             UsernameTextBox.KeyDown += UsernameTextBox_KeyDown;
         }
@@ -58,20 +63,6 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            // TEMPORARY: For testing without database - remove when database is ready
-            //if (username == "test" && password == "test")
-            //{
-            //    ShowStatus("Login successful!", isError: false);
-            //    await Task.Delay(500);
-
-            //    // Open main window without auth service
-            //    var mainWindow = new MainWindow();
-            //    mainWindow.Show();
-            //    this.Close();
-            //    return;
-            //}
-
-            // Real authentication when database is available
             await PerformLoginAsync(username, password);
         }
 
@@ -82,17 +73,18 @@ namespace PatientTrackerWPF
                 ShowLoading(true);
                 ShowStatus("Authenticating...", isError: false);
 
-                var result = await authService.LoginAsync(username, password);
+                var result = await _authService.LoginAsync(username, password);
 
-                if (result.Success)
+                if (result.Success && result.User != null)
                 {
-                    ShowStatus($"Welcome, {result.User?.FullName}!", isError: false);
+                    ShowStatus($"Welcome, {result.User.FullName ?? result.User.Username}!", isError: false);
+                    _currentUserService.SetCurrentUser(result.User);
 
                     // Small delay to show success message
                     await Task.Delay(500);
 
-                    // Open main window and close login window
-                    var mainWindow = new MainWindow(authService);
+                    // Get MainWindow from DI container
+                    var mainWindow = App.GetService<MainWindow>();
                     mainWindow.Show();
                     this.Close();
                 }
@@ -119,6 +111,7 @@ namespace PatientTrackerWPF
         {
             try
             {
+                // You can also use DI for other windows if needed
                 var passwordResetWindow = new PasswordResetWindow();
                 passwordResetWindow.Owner = this;
                 var result = passwordResetWindow.ShowDialog();

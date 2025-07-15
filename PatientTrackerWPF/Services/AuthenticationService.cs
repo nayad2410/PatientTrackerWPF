@@ -4,20 +4,23 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
-using System.Threading;
-
+using BCrypt.Net;
 
 namespace PatientTrackerWPF.Services
 {
     public class AuthenticationService
     {
+        private readonly EmailService _emailService;
         private const int MaxFailedAttempts = 5;
         private const int LockoutMinutes = 30;
 
         public User? CurrentUser { get; private set; }
 
+        public AuthenticationService(EmailService emailService)
+        {
+            _emailService = emailService;
+        }
         public class AuthResult
         {
             public bool Success { get; set; }
@@ -38,16 +41,13 @@ namespace PatientTrackerWPF.Services
                     return new AuthResult { Success = false, Message = "Invalid username or password." };
                 }
 
-                // Check if account is locked
                 if (user.IsLocked)
                 {
                     return new AuthResult { Success = false, Message = $"Account is locked until {user.LockedUntil:yyyy-MM-dd HH:mm}." };
                 }
 
-                // Verify password
-                if (!VerifyPassword(password, user.PasswordHash, user.Salt))
+                if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
                 {
-                    // Increment failed attempts
                     user.FailedLoginAttempts++;
 
                     if (user.FailedLoginAttempts >= MaxFailedAttempts)
@@ -60,13 +60,13 @@ namespace PatientTrackerWPF.Services
                     return new AuthResult { Success = false, Message = "Invalid username or password." };
                 }
 
-                // Successful login - reset failed attempts and update last login
                 user.FailedLoginAttempts = 0;
                 user.LockedUntil = null;
                 user.LastLogin = DateTime.UtcNow;
                 await context.SaveChangesAsync();
 
                 CurrentUser = user;
+
                 return new AuthResult { Success = true, Message = "Login successful.", User = user };
             }
             catch (Exception ex)
@@ -81,30 +81,21 @@ namespace PatientTrackerWPF.Services
             {
                 using var context = new AppDbContext();
 
-                // Check if username already exists
                 if (await context.Users.AnyAsync(u => u.Username == username))
-                {
                     return new AuthResult { Success = false, Message = "Username already exists." };
-                }
 
-                // Check if email already exists
                 if (await context.Users.AnyAsync(u => u.Email == email))
-                {
                     return new AuthResult { Success = false, Message = "Email already exists." };
-                }
 
-                var (hash, salt) = HashPassword(password);
+                var hashedPassword = BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
 
                 var user = new User
                 {
                     Username = username,
                     FullName = fullName,
                     Email = email,
-                    PasswordHash = hash,
-                    Salt = salt,
-                    Role = role,
-                    CreatedBy = createdBy,
-                    CreatedAt = DateTime.UtcNow
+                    PasswordHash = hashedPassword,
+                    Role = role
                 };
 
                 context.Users.Add(user);
@@ -126,23 +117,30 @@ namespace PatientTrackerWPF.Services
                 var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email && u.IsActive);
 
                 if (user == null)
-                {
                     return new AuthResult { Success = false, Message = "No account found with that email address." };
-                }
 
-                // Generate reset token
                 user.PasswordResetToken = GenerateResetToken();
-                user.PasswordResetExpires = DateTime.UtcNow.AddHours(24); // Token expires in 24 hours
+                user.PasswordResetExpires = DateTime.UtcNow.AddHours(24);
 
                 await context.SaveChangesAsync();
 
-                // In a real application, you would send an email here
-                // For now, we'll just show the token (for demo purposes)
+                bool emailSent = await _emailService.SendPasswordResetEmailAsync(user.Email, user.PasswordResetToken, user.FullName);
+
+                if (!emailSent)
+                {
+                    return new AuthResult
+                    {
+                        Success = false,
+                        Message = "Reset token generated but email failed to send."
+                    };
+                }
+
                 return new AuthResult
                 {
                     Success = true,
-                    Message = $"Password reset initiated. Reset token: {user.PasswordResetToken}\n(In production, this would be sent via email)"
+                    Message = "Password reset email sent successfully."
                 };
+
             }
             catch (Exception ex)
             {
@@ -161,13 +159,9 @@ namespace PatientTrackerWPF.Services
                     u.PasswordResetExpires > DateTime.UtcNow);
 
                 if (user == null)
-                {
                     return new AuthResult { Success = false, Message = "Invalid or expired reset token." };
-                }
 
-                var (hash, salt) = HashPassword(newPassword);
-                user.PasswordHash = hash;
-                user.Salt = salt;
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword, workFactor: 12);
                 user.PasswordResetToken = null;
                 user.PasswordResetExpires = null;
                 user.UpdatedAt = DateTime.UtcNow;
@@ -182,6 +176,55 @@ namespace PatientTrackerWPF.Services
             }
         }
 
+        public async Task<AuthResult> ChangePasswordAsync(string currentPassword, string newPassword)
+        {
+            if (CurrentUser == null)
+                return new AuthResult { Success = false, Message = "No user is currently logged in." };
+
+            try
+            {
+                using var context = new AppDbContext();
+                var user = await context.Users.FindAsync(CurrentUser.Id);
+
+                if (user == null)
+                    return new AuthResult { Success = false, Message = "User not found." };
+
+                if (!BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+                    return new AuthResult { Success = false, Message = "Current password is incorrect." };
+
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword, workFactor: 12);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                await context.SaveChangesAsync();
+
+                return new AuthResult { Success = true, Message = "Password changed successfully." };
+            }
+            catch (Exception ex)
+            {
+                return new AuthResult { Success = false, Message = $"Error changing password: {ex.Message}" };
+            }
+        }
+
+        public async Task<bool> MigrateUserPasswordToBCryptAsync(string username, string plainTextPassword)
+        {
+            try
+            {
+                using var context = new AppDbContext();
+                var user = await context.Users.FirstOrDefaultAsync(u => u.Username == username);
+                if (user == null) return false;
+
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(plainTextPassword, workFactor: 12);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                await context.SaveChangesAsync();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public void Logout()
         {
             CurrentUser = null;
@@ -189,49 +232,11 @@ namespace PatientTrackerWPF.Services
 
         public bool IsAuthenticated => CurrentUser != null;
 
-        public bool HasRole(string role)
-        {
-            return CurrentUser?.Role == role;
-        }
+        public bool HasRole(string role) => CurrentUser?.Role == role;
 
-        public string GetCurrentUsername()
-        {
-            return CurrentUser?.Username ?? "Unknown";
-        }
+        public string GetCurrentUsername() => CurrentUser?.Username ?? "Unknown";
 
-        public string GetCurrentUserFullName()
-        {
-            return CurrentUser?.FullName ?? "Unknown User";
-        }
-
-        private (string hash, string salt) HashPassword(string password)
-        {
-            var salt = GenerateSalt();
-            var hash = HashPassword(password, salt);
-            return (hash, salt);
-        }
-
-        private string HashPassword(string password, string salt)
-        {
-            using var sha256 = SHA256.Create();
-            var saltedPassword = password + salt;
-            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(saltedPassword));
-            return Convert.ToBase64String(hashBytes);
-        }
-
-        private bool VerifyPassword(string password, string hash, string salt)
-        {
-            var computedHash = HashPassword(password, salt);
-            return computedHash == hash;
-        }
-
-        private string GenerateSalt()
-        {
-            var bytes = new byte[32];
-            using var rng = RandomNumberGenerator.Create();
-            rng.GetBytes(bytes);
-            return Convert.ToBase64String(bytes);
-        }
+        public string GetCurrentUserFullName() => CurrentUser?.FullName ?? CurrentUser?.Username ?? "Unknown User";
 
         private string GenerateResetToken()
         {

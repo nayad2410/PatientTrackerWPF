@@ -140,6 +140,9 @@
                           IsReadOnly="True"
                           CanUserAddRows="False"
                           HeadersVisibility="Column"
+                          CanUserResizeRows="False"
+                          CanUserDeleteRows="False"
+                          
                           GridLinesVisibility="All"
                           AlternatingRowBackground="#F0F8FF"
                    

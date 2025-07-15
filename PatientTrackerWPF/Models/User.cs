@@ -14,29 +14,28 @@ namespace PatientTrackerWPF.Models
         [Display(Name = "Username")]
         public string Username { get; set; } = string.Empty;
 
-        [Required]
+        // FIXED: Made nullable since database might have NULLs
         [StringLength(100)]
         [Display(Name = "Full Name")]
-        public string FullName { get; set; } = string.Empty;
+        public string FullName { get; set; }
 
-        [Required]
+        // FIXED: Made nullable since database might have NULLs  
         [StringLength(100)]
         [EmailAddress]
         [Display(Name = "Email")]
-        public string Email { get; set; } = string.Empty;
+        public string Email { get; set; }
 
         [Required]
         [StringLength(255)]
         public string PasswordHash { get; set; } = string.Empty;
 
-        [Required]
+        // FIXED: Made nullable for BCrypt (BCrypt doesn't need separate salt)
         [StringLength(50)]
-        public string Salt { get; set; } = string.Empty;
+        public string? Salt { get; set; }
 
-        [Required]
         [StringLength(20)]
         [Display(Name = "Role")]
-        public string Role { get; set; } = "User"; // Admin, Doctor, Technician, User
+        public string Role { get; set; } = "User"; // Made nullable
 
         [Display(Name = "Is Active")]
         public bool IsActive { get; set; } = true;
@@ -80,12 +79,12 @@ namespace PatientTrackerWPF.Models
         public virtual ICollection<ScoreEntry>? ScoreEntriesCreated { get; set; } = new List<ScoreEntry>();
         public virtual ICollection<ScoreEntry>? ScoreEntriesUpdated { get; set; } = new List<ScoreEntry>();
 
-        // Computed properties
+        // Computed properties with null safety
         [NotMapped]
         public bool IsLocked => LockedUntil.HasValue && LockedUntil > DateTime.UtcNow;
 
         [NotMapped]
-        public string DisplayName => $"{FullName} ({Username})";
+        public string DisplayName => $"{FullName ?? "Unknown"} ({Username})";
 
         [NotMapped]
         public bool CanResetPassword => !string.IsNullOrEmpty(PasswordResetToken) &&

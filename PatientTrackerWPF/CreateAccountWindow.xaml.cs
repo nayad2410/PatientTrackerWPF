@@ -14,7 +14,7 @@ namespace PatientTrackerWPF
         public CreateAccountWindow()
         {
             InitializeComponent();
-            authService = new AuthenticationService();
+            authService = App.GetService<AuthenticationService>();
 
             // Set focus to username box
             Loaded += (s, e) => UsernameTextBox.Focus();

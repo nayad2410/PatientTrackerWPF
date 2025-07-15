@@ -70,6 +70,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- 0: Logo/Header -->
+                <!-- 0: Logo/Header with Logout Button -->
                 <Border Grid.Row="0" Background="#2B5F75" Padding="15" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -92,14 +93,62 @@
                                    FontSize="12" Foreground="LightGray"
                                    HorizontalAlignment="Center"/>
                         </StackPanel>
+
+
+                        <!-- Updated User Info with Logout Button -->
                         <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <TextBlock Text="Current User:" FontSize="10" Foreground="LightGray"/>
-                            <TextBlock x:Name="CurrentUserText" Text="System User"
-                                   FontSize="12" FontWeight="SemiBold"
-                                   Foreground="White"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,5">
+                                <StackPanel Margin="0,0,15,0">
+                                    <TextBlock Text="Current User:" FontSize="10" Foreground="LightGray"/>
+                                    <TextBlock x:Name="CurrentUserText" Text="System User"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="White"/>
+                                </StackPanel>
+
+                                <!-- Logout Button -->
+                                <Button x:Name="LogoutButton" 
+                                        Content="Logout"
+                                        Click="LogoutButton_Click"
+                                        Width="70" Height="25"
+                                        Background="#C0392B" Foreground="White"
+                                        FontWeight="Bold" FontSize="10"
+                                        BorderThickness="0" Cursor="Hand"
+                                        VerticalAlignment="Top">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="3"
+                                                                Padding="8,3">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#A93226"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- User Role Display -->
+                            <TextBlock x:Name="UserRoleText" 
+                                       Text="Administrator"
+                                       FontSize="9" 
+                                       Foreground="LightGray"
+                                       HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
                 </Border>
+
+           
 
                 <!-- 1: Patient Selector -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
@@ -877,6 +926,8 @@
                           HeadersVisibility="Column"
                           GridLinesVisibility="All"
                           Background="White"
+                              IsReadOnly="True"
+                              CanUserResizeRows="False"
                           MouseDoubleClick="ScoresGrid_MouseDoubleClick_1"
                           SelectionChanged="ScoresGrid_SelectionChanged"
                           VirtualizingPanel.IsVirtualizing="True"

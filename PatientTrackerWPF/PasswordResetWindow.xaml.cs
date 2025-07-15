@@ -27,7 +27,7 @@ namespace PatientTrackerWPF
         public PasswordResetWindow()
         {
             InitializeComponent();
-            authService = new AuthenticationService();
+            authService = App.GetService<AuthenticationService>();
             // Set focus to email box
             Loaded += (s, e) => EmailTextBox.Focus();
 
