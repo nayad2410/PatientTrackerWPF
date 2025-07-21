@@ -62,7 +62,7 @@
                 <!-- All-Time Remission Rate -->
                 <StackPanel Grid.Column="0" Margin="0 0 10 0">
                     <TextBlock Text="All-Time Remission Rate" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                    <TextBlock Text="(ever reached &lt;14)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock Text="(ever reached ≤14)" FontSize="10" HorizontalAlignment="Center" Foreground="Gray"/>
                     <TextBlock x:Name="AllTimeRemissionRateText" Text="0.0%" FontSize="20" FontWeight="Bold" 
                                HorizontalAlignment="Center" Foreground="Purple"/>
                     <TextBlock x:Name="AllTimeRemissionCountText" Text="(0/0 patients)" FontSize="10" 

@@ -17,13 +17,13 @@ namespace PatientTrackerWPF.Models
         // FIXED: Made nullable since database might have NULLs
         [StringLength(100)]
         [Display(Name = "Full Name")]
-        public string FullName { get; set; }
+        public string FullName { get; set; } = string.Empty ;
 
         // FIXED: Made nullable since database might have NULLs  
         [StringLength(100)]
         [EmailAddress]
         [Display(Name = "Email")]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
 
         [Required]
         [StringLength(255)]

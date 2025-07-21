@@ -1,4 +1,5 @@
-﻿using PatientTrackerWPF.Data;
+﻿#nullable disable
+using PatientTrackerWPF.Data;
 using PatientTrackerWPF.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -6,6 +7,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using BCrypt.Net;
+using PatientTrackerWPF.Constants;
+using PatientTrackerWPF.Helper;
 
 namespace PatientTrackerWPF.Services
 {
@@ -80,6 +83,8 @@ namespace PatientTrackerWPF.Services
             try
             {
                 using var context = new AppDbContext();
+                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                    return new AuthResult { Success = false, Message = "Username and password are required." };
 
                 if (await context.Users.AnyAsync(u => u.Username == username))
                     return new AuthResult { Success = false, Message = "Username already exists." };
@@ -87,15 +92,30 @@ namespace PatientTrackerWPF.Services
                 if (await context.Users.AnyAsync(u => u.Email == email))
                     return new AuthResult { Success = false, Message = "Email already exists." };
 
+                // Validate and normalize role
+                if (!UserRoles.IsValidRole(role))
+                {
+                    role = UserRoles.User; // Fallback to User role for invalid roles
+                }
+
+                // Check if current user can assign this role
+                if (CurrentUser != null && !CanCurrentUserAssignRole(role))
+                {
+                    return new AuthResult { Success = false, Message = $"You don't have permission to assign the role: {role}" };
+                }
+
                 var hashedPassword = BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
 
                 var user = new User
                 {
-                    Username = username,
-                    FullName = fullName,
-                    Email = email,
+                    Username = username.Trim(),
+                    FullName = fullName?.Trim() ?? string.Empty,  // FIX: Handle potential null
+                    Email = email?.Trim() ?? string.Empty,        // FIX: Handle potential null
                     PasswordHash = hashedPassword,
-                    Role = role
+                    Role = role, // Now using validated role
+                    IsActive = true,
+                    CreatedBy = createdBy,
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 context.Users.Add(user);
@@ -109,6 +129,32 @@ namespace PatientTrackerWPF.Services
             }
         }
 
+        private bool CanCurrentUserAssignRole(string roleToAssign)
+        {
+            if (CurrentUser == null) return false;
+
+            var assignableRoles = UserRoles.GetAssignableRoles(CurrentUser.Role);
+            return assignableRoles.Contains(roleToAssign);
+        }
+
+
+        //helper methods for role checking in your AuthenticationService
+        public bool IsCurrentUserAdmin() => CurrentUser != null && RoleHelper.IsAdmin(CurrentUser);
+        public bool IsCurrentUserDoctor() => CurrentUser != null && RoleHelper.IsDoctor(CurrentUser);
+        public bool IsCurrentUserTechnician() => CurrentUser != null && RoleHelper.IsTechnician(CurrentUser);
+        public bool IsCurrentUserResearcher() => CurrentUser != null && RoleHelper.IsResearcher(CurrentUser);
+        public bool IsCurrentUserTest() => CurrentUser != null && RoleHelper.IsTest(CurrentUser);
+
+        // Get current user's permissions
+        public string GetCurrentUserPermissions() => CurrentUser != null ? RoleHelper.GetPermissionSummary(CurrentUser) : "No permissions";
+
+        // Check if current user can perform specific actions
+        public bool CanCurrentUserManageUsers() => CurrentUser != null && RoleHelper.CanManageUsers(CurrentUser);
+        public bool CanCurrentUserDeleteData() => CurrentUser != null && RoleHelper.CanDeleteData(CurrentUser);
+        public bool CanCurrentUserEditData() => CurrentUser != null && RoleHelper.CanEditData(CurrentUser);
+        public bool CanCurrentUserAddData() => CurrentUser != null && RoleHelper.CanAddData(CurrentUser);
+        public bool CanCurrentUserExportData() => CurrentUser != null && RoleHelper.CanExportData(CurrentUser);
+        public bool CanCurrentUserGenerateReports() => CurrentUser != null && RoleHelper.CanGenerateReports(CurrentUser);
         public async Task<AuthResult> ResetPasswordAsync(string email)
         {
             try

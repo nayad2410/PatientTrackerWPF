@@ -223,7 +223,7 @@
                         <!-- Add Score Button -->
                         <Button Content="Add Score"
                             Click="AddScore_Click"
-                            Margin="10,20,0,0"
+                            Margin="10,1,0,0"
                             Width="80" Height="30"
                             Background="#2B5F75" Foreground="White"
                             FontWeight="Bold"
@@ -256,135 +256,200 @@
                     <!-- Right Side: Filter and Export Controls -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
                         <!-- Filter Section -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,15,0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
                             <TextBlock Text="Filter:" VerticalAlignment="Center"
-                                   Margin="0,0,5,0" FontWeight="SemiBold" Foreground="#2B5F75"/>
+                   Margin="0,0,5,0" FontWeight="SemiBold" Foreground="#2B5F75"/>
                             <TextBox x:Name="FilterBox"
-                                 Width="120" Height="25"
-                                 BorderBrush="#2B5F75" BorderThickness="2"
-                                 TextChanged="FilterBox_TextChanged"/>
+                 Width="100" Height="25"
+                 BorderBrush="#2B5F75" BorderThickness="2"
+                 TextChanged="FilterBox_TextChanged"/>
                         </StackPanel>
 
+                        <!-- Admin Controls Group -->
+                        <StackPanel Orientation="Horizontal" Margin="5,0">
+                            <!-- Admin-Only Buttons - Compact Size -->
+                            <Button x:Name="BackupNowButton"
+                Content="💾 Backup"
+                Width="85" Height="30"
+                Margin="3"
+                Click="BackupNowButton_Click"
+                Visibility="Collapsed"
+                Background="#2B5F75" Foreground="White"
+                FontWeight="Bold" FontSize="9"
+                BorderThickness="0" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="6,4">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#1E4A5F"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
 
+                            <Button x:Name="ImportCsvButton"
+                Content="📁 Import"
+                Width="85" Height="30"
+                Margin="3"
+                Click="ImportCsvButton_Click"
+                Visibility="Collapsed" 
+                Background="DarkOrange" Foreground="White"
+                FontWeight="Bold" FontSize="9"
+                BorderThickness="0" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="6,4">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#CC7A00"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
 
-                      
+                            <Button x:Name="DeletePatientButton"
+                Content="🗑️ Delete"
+                Width="85" Height="30"
+                Margin="3"
+                Click="DeletePatient_Click"
+                Visibility="Collapsed"
+                Background="DarkRed" Foreground="White"
+                FontWeight="Bold" FontSize="9"
+                BorderThickness="0" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="6,4">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#8B0000"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
 
-                        <Button Content="Professional Report"
-        Click="GenerateProfessionalReport_Click"
-        Width="130" Height="25"
-        Background="DarkBlue" Foreground="White"
-        FontWeight="Bold" BorderThickness="0"
-        Cursor="Hand" FontSize="10"
-        Margin="0,0,8,0">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}"
-                                CornerRadius="5"
-                                Padding="6">
-                                                    <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#000080"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <!-- Export Buttons -->
-                        <Button Content="Export CSV"
-                            Click="ExportToCsv_Click"
-                            Width="85" Height="25"
-                            Background="DarkGreen" Foreground="White"
-                            FontWeight="Bold" Margin="0,0,8,0"
-                            BorderThickness="0" Cursor="Hand" FontSize="10">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="5"
-                                                    Padding="6">
-                                                    <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#006400"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                        <!-- Report & Export Controls Group -->
+                        <StackPanel Orientation="Horizontal" Margin="5,0,0,0">
+                            <Button Content="📄 Report"
+                Click="GenerateProfessionalReport_Click"
+                Width="85" Height="25"
+                Background="DarkBlue" Foreground="White"
+                FontWeight="Bold" BorderThickness="0"
+                Cursor="Hand" FontSize="9"
+                Margin="2">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="5,3">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#000080"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
 
-                        <!--<Button Content="Export PNG"
-                            Click="ExportToPng_Click"
-                            Width="85" Height="25"
-                            Background="DarkCyan" Foreground="White"
-                            FontWeight="Bold" Margin="0,0,8,0"
-                            BorderThickness="0" Cursor="Hand" FontSize="10">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="5"
-                                                    Padding="6">
-                                                    <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#008B8B"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Button.Style>
-                        </Button>-->
+                            <Button Content="📊 CSV"
+                Click="ExportToCsv_Click"
+                Width="70" Height="25"
+                Background="DarkGreen" Foreground="White"
+                FontWeight="Bold" Margin="2"
+                BorderThickness="0" Cursor="Hand" FontSize="9">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="5,3">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#006400"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
 
-                        <Button x:Name="btnExportTopPng" Content="All-Time Remissions"
-                            Click="ShowAllTimeRemissions_Click"
-                            Width="130" Height="25"
-                            Background="Purple" Foreground="White"
-                            FontWeight="Bold" BorderThickness="0"
-                            Cursor="Hand" FontSize="10">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}"
-                                                    CornerRadius="5"
-                                                    Padding="6">
-                                                    <ContentPresenter HorizontalAlignment="Center"
-                                                                  VerticalAlignment="Center"/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#800080"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                            <Button x:Name="btnExportTopPng" 
+                Content="📈 Remissions"
+                Click="ShowAllTimeRemissions_Click"
+                Width="95" Height="25"
+                Background="Purple" Foreground="White"
+                FontWeight="Bold" BorderThickness="0"
+                Cursor="Hand" FontSize="9" Margin="2">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="4" Padding="5,3">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#800080"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
