@@ -1,4 +1,5 @@
-﻿using System;
+﻿using PatientTrackerWPF.Data;
+using System;
 using System.Globalization;
 using System.Windows.Data;
 
@@ -13,7 +14,13 @@ namespace PatientTrackerWPF
         {
             // FIXED: Handle null values and display as "—"
             if (value == null) return "—";
+            // Handle DateTime conversion
+            if (value is DateTime dateTime)
+            {
+                return dateTime.ToLocalDisplayString();
+            }
 
+        
             // Handle nullable integers
             if (value is int nullableInt)
             {
@@ -41,6 +48,14 @@ namespace PatientTrackerWPF
 
                     if (int.TryParse(str, out int result))
                         return result;
+                }
+            }
+            // Handle DateTime conversion back
+            if (targetType == typeof(DateTime) || targetType == typeof(DateTime?))
+            {
+                if (value is string str && DateTime.TryParse(str, out DateTime dateResult))
+                {
+                    return dateResult;
                 }
             }
 

@@ -58,23 +58,37 @@ namespace PatientTrackerWPF
 
                 var remissionService = new RemissionTrackingService();
                 var report = remissionService.GenerateRemissionReport(analysis);
-                var fileName = $"AllTimeRemissionAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
 
-                File.WriteAllText(fileName, report);
+                // Open Save File Dialog
+                var dialog = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "Save Remission Report",
+                    FileName = $"AllTimeRemissionAnalysis_{DateTime.Now:yyyyMMdd_HHmmss}.txt",
+                    Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+                    DefaultExt = ".txt"
+                };
 
-                MessageBox.Show($"All-time remission report exported to {fileName}\n\nFile location: {Path.GetFullPath(fileName)}",
-                               "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                bool? result = dialog.ShowDialog();
+
+                if (result == true)
+                {
+                    File.WriteAllText(dialog.FileName, report);
+
+                    MessageBox.Show($"✅ All-time remission report exported successfully!\n\nLocation: {dialog.FileName}",
+                                    "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error exporting report: {ex.Message}", "Export Error",
-                               MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"❌ Error exporting report: {ex.Message}", "Export Error",
+                                MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 ShowLoading(false);
             }
         }
+
 
         private void Close_Click(object sender, RoutedEventArgs e)
         {

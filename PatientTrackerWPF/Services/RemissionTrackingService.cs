@@ -47,7 +47,7 @@ namespace PatientTrackerWPF.Services
                 if (entries.Count < 2) continue; // Need at least 2 assessments
 
                 var baseline = entries.First();
-                if (baseline.BDI2.Value < 14) continue; // FIXED: Use .Value
+                if (baseline.BDI2.Value <= 14) continue; // FIXED: Use .Value
 
                 // Track remission periods for this patient
                 var remissionPeriods = FindRemissionPeriods(patientId, entries);
@@ -90,7 +90,7 @@ namespace PatientTrackerWPF.Services
             for (int i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
-                bool isRemissionScore = entry.BDI2.Value < 14; // FIXED: Use .Value
+                bool isRemissionScore = entry.BDI2.Value <= 14; // FIXED: Use .Value
 
                 if (!inRemission && isRemissionScore)
                 {

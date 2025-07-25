@@ -3,11 +3,12 @@ using LiveCharts;
 using LiveCharts.Defaults;
 using LiveCharts.Wpf;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.VisualBasic;
 using Microsoft.Win32;
-// FIXED: Correct namespace and remove duplicate System.Windows.Media
 using PatientTrackerWPF.Constants;
 using PatientTrackerWPF.Data;
-using PatientTrackerWPF.Helper;  // Keep this as is since you created it under Helper folder
+using PatientTrackerWPF.Helper;
 using PatientTrackerWPF.Models;
 using PatientTrackerWPF.Services;
 using PatientTrackerWPF.Utilities;
@@ -33,9 +34,12 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
+using static SkiaSharp.HarfBuzz.SKShaper;
 using static System.Net.Mime.MediaTypeNames;
 using Brushes = System.Windows.Media.Brushes;
-//  these for the professional report 
+using Color = System.Windows.Media.Color;
+
+// These for the professional report 
 using DrawingBitmap = System.Drawing.Bitmap;
 using DrawingBrushes = System.Drawing.Brushes;
 using DrawingColor = System.Drawing.Color;
@@ -47,10 +51,6 @@ using DrawingPointF = System.Drawing.PointF;
 using DrawingRectangle = System.Drawing.Rectangle;
 using Path = System.IO.Path;
 using Separator = LiveCharts.Wpf.Separator;
-using System.Linq;
-using Microsoft.VisualBasic;
-
-
 
 namespace PatientTrackerWPF
 {
@@ -66,8 +66,6 @@ namespace PatientTrackerWPF
         private readonly ICurrentUserService currentUserService;
         private ClinicalMetricsService.ClinicalMetrics? currentMetrics;
         private List<ScoreEntry> currentPatientEntries = new List<ScoreEntry>();
-        private bool isPresentationMode = false;
-        private bool isDemoMode = false;
 
         private User currentUser => authService?.CurrentUser ?? currentUserService?.CurrentUser;
 
@@ -79,32 +77,31 @@ namespace PatientTrackerWPF
         public ChartValues<DateTimePoint> Pcl5Values { get; set; } = new();
         public ChartValues<DateTimePoint> YbocsValues { get; set; } = new();
 
+        private readonly AppDbContext _dbContext;
+
+        private readonly AuditService _auditService;
+        private readonly EncryptionService _encryptionService;
+        private bool isInEditMode = false;
+        private ScoreEntry editingEntry = null;
+
         public MainWindow(
-               AuthenticationService authenticationService,
-               ICurrentUserService currentUserService,
-               ClinicalMetricsService clinicalMetricsService,
-               RemissionTrackingService remissionTrackingService)
+            AuthenticationService authenticationService,
+            ICurrentUserService currentUserService,
+            ClinicalMetricsService clinicalMetricsService,
+            RemissionTrackingService remissionTrackingService,
+            AppDbContext dbContext)
         {
             InitializeComponent();
-
-            // Enable keyboard shortcuts for demo mode
-            KeyDown += (s, e) => { if (e.Key == Key.F5 && RoleHelper.IsResearcher(currentUser)) AddDemoPatientData(); };
-            KeyDown += (s, e) => {
-                if (e.Key == Key.F6)
-                {
-                    GenerateDemoDataset();
-                    MessageBox.Show("🎯 Demo data loaded!\n\n3 patients with realistic progression data ready for presentation.",
-                                   "Demo Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            };
 
             // Assign injected services
             authService = authenticationService;
             this.currentUserService = currentUserService;
             metricsService = clinicalMetricsService;
             remissionService = remissionTrackingService;
+            _auditService = App.GetService<AuditService>();
+            _encryptionService = App.GetService<EncryptionService>();
+            _dbContext = dbContext;
 
-            // Added ScoreConverter to resources programmatically if XAML fails
             if (!Resources.Contains("ScoreConverter"))
             {
                 Resources.Add("ScoreConverter", new ScoreConverter());
@@ -114,48 +111,17 @@ namespace PatientTrackerWPF
             InitializeChart();
             SetupResponsiveLayout();
             UpdateUserDisplay();
-        }
 
-        private void GenerateDemoDataset()
-        {
-            var demoPatients = new[]
+            // Always load from database
+            _ = Task.Run(async () =>
             {
-        ("DEMO-001", "Success Story", new[] { (25, 18, 35), (18, 12, 28), (12, 8, 18), (6, 4, 10) }),
-        ("DEMO-002", "Steady Progress", new[] { (22, 15, 32), (20, 14, 28), (18, 12, 24), (15, 10, 20) }),
-        ("DEMO-003", "Recent Start", new[] { (28, 20, 42), (26, 18, 38) })
-    };
-
-            // Clear existing demo data
-            var keysToRemove = patientData.Keys.Where(k => k.StartsWith("DEMO-")).ToList();
-            foreach (var key in keysToRemove)
-            {
-                patientData.Remove(key);
-                PatientSelector.Items.Remove(key);
-            }
-
-            foreach (var (id, desc, scores) in demoPatients)
-            {
-                patientData[id] = new List<ScoreEntry>();
-                var baseDate = DateTime.Today.AddDays(-scores.Length * 14);
-
-                for (int i = 0; i < scores.Length; i++)
+                await Dispatcher.InvokeAsync(async () =>
                 {
-                    var (phq9, gad7, bdi2) = scores[i];
-                    patientData[id].Add(new ScoreEntry
-                    {
-                        PatientId = id,
-                        PHQ9 = phq9,
-                        GAD7 = gad7,
-                        BDI2 = bdi2,
-                        Date = baseDate.AddDays(i * 14),
-                        Note = $"{desc} - Assessment {i + 1}. Treatment showing {(i == 0 ? "baseline" : "improvement")}.",
-                        CreatedBy = "Demo System",
-                        CreatedAt = DateTime.UtcNow.AddDays(-scores.Length * 14 + i * 14)
-                    });
-                }
-                PatientSelector.Items.Add(id);
-            }
+                    await LoadAllPatientsFromDatabase();
+                });
+            });
         }
+
         private void UpdateUserDisplay()
         {
             try
@@ -192,39 +158,22 @@ namespace PatientTrackerWPF
             }
         }
 
-
         private void ApplyRoleBasedPermissions()
         {
             if (currentUser == null) return;
 
             try
             {
-                // Check if demo mode (Test role)
-                isDemoMode = RoleHelper.IsTest(currentUser);
-                if (isDemoMode)
-                {
-                    ShowDemoModeNotification();
-                }
                 if (RoleHelper.IsAdmin(currentUser))
                 {
                     // Optional: Show admin capabilities notice
                     System.Diagnostics.Debug.WriteLine("Admin user detected - full system access granted");
-
                     // You could add a subtle admin indicator to your UI
                     this.Title += " [ADMINISTRATOR]";
                 }
 
-                // Check if researcher and offer presentation mode
-                if (RoleHelper.IsResearcher(currentUser))
-                {
-                    OfferPresentationMode();
-                }
-
                 // Apply UI visibility based on role
                 ApplyUIPermissions();
-
-                // Update window title with role
-                UpdateWindowTitleWithRole();
 
                 // Show role information
                 UpdateRoleDisplay();
@@ -237,131 +186,6 @@ namespace PatientTrackerWPF
             }
         }
 
-        private void EnableResearcherDemoMode()
-        {
-            // Temporarily act like demo mode for presentation
-            isDemoMode = true;
-
-            // Enable fields
-            SetDataEntryFieldsEnabled(true);
-
-            // Update UI
-            var addButton = FindName("AddScoreButton") as Button;
-            if (addButton != null)
-            {
-                addButton.Content = "🎭 Demo: Add Patient Data";
-                addButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 215, 0));
-            }
-
-            MessageBox.Show("🎭 Demo mode enabled! You can now demonstrate data entry.",
-                           "Demo Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        private void SetDataEntryFieldsEnabled(bool isEnabled)
-        {
-            // Enable/disable all data entry fields
-            PatientIdBox.IsEnabled = isEnabled;
-            Phq9Box.IsEnabled = isEnabled;
-            Gad7Box.IsEnabled = isEnabled;
-            Bdi2Box.IsEnabled = isEnabled;
-            PCL5Total.IsEnabled = isEnabled;
-            YBOCS.IsEnabled = isEnabled;
-            NoteBox.IsEnabled = isEnabled;
-            DatePicker.IsEnabled = isEnabled;
-
-            // FIXED: Also override read-only for demo mode
-            PatientIdBox.IsReadOnly = !isEnabled;
-            Phq9Box.IsReadOnly = !isEnabled;
-            Gad7Box.IsReadOnly = !isEnabled;
-            Bdi2Box.IsReadOnly = !isEnabled;
-            PCL5Total.IsReadOnly = !isEnabled;
-            YBOCS.IsReadOnly = !isEnabled;
-            NoteBox.IsReadOnly = !isEnabled;
-
-            // Change visual appearance
-            var backgroundColor = isEnabled ? Brushes.White : Brushes.LightGray;
-            PatientIdBox.Background = backgroundColor;
-            Phq9Box.Background = backgroundColor;
-            Gad7Box.Background = backgroundColor;
-            Bdi2Box.Background = backgroundColor;
-            PCL5Total.Background = backgroundColor;
-            YBOCS.Background = backgroundColor;
-            NoteBox.Background = backgroundColor;
-        }
-        private void AddDemoPatientData()
-        {
-            if (isDemoMode && RoleHelper.IsResearcher(currentUser))
-            {
-                // Pre-fill with demo data for easy testing
-                PatientIdBox.Text = "DEMO-001";
-                Phq9Box.Text = "15";
-                Gad7Box.Text = "12";
-                Bdi2Box.Text = "28";
-                PCL5Total.Text = "45";
-                YBOCS.Text = "18";
-                NoteBox.Text = "Initial assessment - moderate symptoms";
-                DatePicker.SelectedDate = DateTime.Today;
-
-                MessageBox.Show("🎯 Demo data pre-filled! Click 'Add Score' to demonstrate the system.",
-                               "Demo Data Ready", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-        }
-
-
-        private void OfferPresentationMode()
-        {
-            var result = MessageBox.Show(
-                "🎯 RESEARCHER ACCOUNT DETECTED\n\n" +
-                "Perfect for presentations and demonstrations!\n\n" +
-                "Would you like to enable Presentation Mode?\n\n" +
-                "✅ Presentation Mode Benefits:\n" +
-                "• Enhanced visual feedback for demonstrations\n" +
-                "• All viewing and reporting features available\n" +
-                "• Clear indication of read-only access\n" +
-                "• Professional presentation-ready interface\n\n" +
-                "Enable Presentation Mode for today's demo?",
-                "Presentation Mode Available",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result == MessageBoxResult.Yes)
-            {
-                isPresentationMode = true;
-                ShowPresentationModeNotification();
-            }
-        }
-
-        private void ShowDemoModeNotification()
-        {
-            MessageBox.Show(
-                "🎭 DEMO MODE ACTIVE\n\n" +
-                "You are using a test/demo account.\n" +
-                "No real patient data will be saved during this session.\n" +
-                "Perfect for presentations and testing!",
-                "Demo Mode",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-
-        private void ShowPresentationModeNotification()
-        {
-            MessageBox.Show(
-                "🎯 PRESENTATION MODE ENABLED\n\n" +
-                "Your researcher account is now optimized for presentations!\n\n" +
-                "✅ What you can do:\n" +
-                "• View all patient data and charts\n" +
-                "• Generate professional reports\n" +
-                "• Export data for analysis\n" +
-                "• View clinical metrics and outcomes\n" +
-                "• Demonstrate all reporting features\n\n" +
-                "🔒 Protected features:\n" +
-                "• Data entry is read-only (prevents accidental changes)\n" +
-                "• User management is restricted\n\n" +
-                "Perfect for showing the system's analytical capabilities!",
-                "Presentation Mode Active",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-
         private void ApplyUIPermissions()
         {
             var user = currentUser;
@@ -372,38 +196,23 @@ namespace PatientTrackerWPF
             HideElementIfNotPermitted("AdminMenuItem", RoleHelper.CanManageUsers(user));
             BackupNowButton.Visibility = RoleHelper.IsAdmin(currentUser) ? Visibility.Visible : Visibility.Collapsed;
             ImportCsvButton.Visibility = RoleHelper.IsAdmin(currentUser) ? Visibility.Visible : Visibility.Collapsed;
-            DeletePatientButton.Visibility = RoleHelper.IsAdmin(currentUser) ? Visibility.Visible : Visibility.Collapsed;
-
+            DeletePatientButton.Visibility = (RoleHelper.IsAdmin(currentUser) || RoleHelper.IsDoctor(currentUser))
+                ? Visibility.Visible : Visibility.Collapsed;
 
             // Data Entry Controls
             var canAddData = RoleHelper.CanAddData(user);
             var canEditData = RoleHelper.CanEditData(user);
 
-            // FIXED: Don't disable elements for researchers here - let demo mode handle it
-            if (!RoleHelper.IsResearcher(user))
-            {
-                SetElementEnabled("PatientIdBox", canAddData);
-                SetElementEnabled("Phq9Box", canAddData);
-                SetElementEnabled("Gad7Box", canAddData);
-                SetElementEnabled("Bdi2Box", canAddData);
-                SetElementEnabled("PCL5Total", canAddData);
-                SetElementEnabled("YBOCS", canAddData);
-                SetElementEnabled("NoteBox", canAddData);
-                SetElementEnabled("DatePicker", canAddData);
+            SetElementEnabled("PatientIdBox", canAddData);
+            SetElementEnabled("Phq9Box", canAddData);
+            SetElementEnabled("Gad7Box", canAddData);
+            SetElementEnabled("Bdi2Box", canAddData);
+            SetElementEnabled("PCL5Total", canAddData);
+            SetElementEnabled("YBOCS", canAddData);
+            SetElementEnabled("NoteBox", canAddData);
+            SetElementEnabled("DatePicker", canAddData);
 
-                HideElementIfNotPermitted("AddScoreButton", canAddData);
-            }
-            else
-            {
-                // For researchers, show the Add Score button but with special handling
-                var addButton = FindName("AddScoreButton") as Button;
-                if (addButton != null)
-                {
-                    addButton.Visibility = Visibility.Visible;
-                    addButton.Content = "🎯 Demonstrate Data Entry";
-                    addButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(135, 206, 235));
-                }
-            }
+            HideElementIfNotPermitted("AddScoreButton", canAddData);
 
             // Export Controls
             var canExport = RoleHelper.CanExportData(user);
@@ -415,16 +224,10 @@ namespace PatientTrackerWPF
             var canGenerateReports = RoleHelper.CanGenerateReports(user);
             HideElementIfNotPermitted("GenerateProfessionalReportButton", canGenerateReports);
 
-            // Special handling for Researchers (read-only mode) - but allow demo override
-            if (RoleHelper.IsResearcher(user) && !isDemoMode)
+            // Special handling for Researchers (read-only mode)
+            if (RoleHelper.IsResearcher(user))
             {
                 MakeDataEntryReadOnlyForResearcher();
-            }
-
-            // Demo mode restrictions or presentation mode styling
-            if (isDemoMode || isPresentationMode)
-            {
-                ApplyDemoModeRestrictions();
             }
         }
 
@@ -448,15 +251,14 @@ namespace PatientTrackerWPF
 
         private void MakeDataEntryReadOnlyForResearcher()
         {
-            // Make text boxes read-only for researchers(but not disabled, so demo mode can override)
+            // Make text boxes read-only for researchers
             var textBoxes = new[] { "PatientIdBox", "Phq9Box", "Gad7Box", "Bdi2Box", "PCL5Total", "YBOCS", "NoteBox" };
             foreach (var name in textBoxes)
             {
                 var textBox = FindName(name) as TextBox;
                 if (textBox != null)
                 {
-                    textBox.IsReadOnly = true;  // Read-only, but still enabled
-                    textBox.IsEnabled = true;   // Keep enabled so demo mode can work
+                    textBox.IsReadOnly = true;
                     textBox.Background = Brushes.LightGray;
                 }
             }
@@ -472,41 +274,6 @@ namespace PatientTrackerWPF
             {
                 ScoresGrid.IsReadOnly = true;
             }
-
-        }
-
-        private void ApplyDemoModeRestrictions()
-        {
-            if (isDemoMode)
-            {
-                // Add visual indicators for demo mode
-                this.Title = $"[DEMO MODE] {this.Title}";
-
-                // Change color scheme slightly
-                var demoColor = new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 248, 220)); // Light yellow
-                this.Background = demoColor;
-            }
-            else if (isPresentationMode)
-            {
-                // Add visual indicators for presentation mode
-                this.Title = $"[PRESENTATION MODE] {this.Title}";
-
-                // Change color scheme to professional blue
-                var presentationColor = new SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 248, 255)); // Alice blue
-                this.Background = presentationColor;
-            }
-        }
-
-        private void UpdateWindowTitleWithRole()
-        {
-            var user = currentUser;
-            if (user == null) return;
-
-            var prefix = "";
-            if (isDemoMode) prefix = "[DEMO] ";
-            else if (isPresentationMode) prefix = "[PRESENTATION] ";
-
-            this.Title = $"{prefix}Reconnect Progress Tracker - {user.FullName ?? user.Username} ({user.Role})";
         }
 
         private void UpdateRoleDisplay()
@@ -538,7 +305,7 @@ namespace PatientTrackerWPF
 
             if (statusText != null)
             {
-                statusText.Text = isDemoMode ? "Demo Mode - Ready" : "Ready";
+                statusText.Text = "Ready";
             }
 
             if (statusRoleText != null)
@@ -551,7 +318,6 @@ namespace PatientTrackerWPF
                 statusPermissionsText.Text = RoleHelper.GetPermissionSummary(user);
             }
         }
-
 
         // ─── Responsive Layout ────────────────────────────────────────────────
         private void SetupResponsiveLayout()
@@ -655,74 +421,29 @@ namespace PatientTrackerWPF
             });
 
             ScoresGrid.ItemsSource = new List<ScoreEntry>();
-
-            //if (!Resources.Contains("ScoreConverter"))
-            //{
-            //    Resources.Add("ScoreConverter", new ScoreConverter());
-            //}
-            //DataContext = this;
-            //InitializeChart();
-            //SetupResponsiveLayout();
-
-
-
-
         }
 
-
         // ─── Add Score Click with Score Validation ──────────────────────────────────────────────────
-        // Updated AddScore_Click method with proper user tracking
-        private void AddScore_Click(object sender, RoutedEventArgs e)
+        private async void AddScore_Click(object sender, RoutedEventArgs e)
         {
-            // For researchers - offer to enable demo mode
-            if (RoleHelper.IsResearcher(currentUser) && !isDemoMode)
-            {
-                var result = MessageBox.Show(
-                    "🎯 Would you like to demonstrate data entry?\n\n" +
-                    "This will temporarily enable the data entry interface for presentation purposes.",
-                    "Demonstrate Data Entry?",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+            System.Diagnostics.Debug.WriteLine("AddScore_Click Started");
 
-                if (result == MessageBoxResult.Yes)
-                {
-                    EnableResearcherDemoMode();
-                    return; // Don't actually add data yet, just enable the interface
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            // Check permissions (researchers in demo mode can proceed)
-            if (!RoleHelper.CanAddData(currentUser) && !isDemoMode)
+            // Check permissions
+            if (!RoleHelper.CanAddData(currentUser) && !isInEditMode)
             {
                 MessageBox.Show("You don't have permission to add patient data.",
                                "Access Denied", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            // Your existing demo mode check (works for both Test users AND researchers in demo mode)
-            if (isDemoMode)
-            {
-                var result = MessageBox.Show(
-                    "You are in DEMO MODE.\n\n" +
-                    "This data will not be permanently saved.\n" +
-                    "Continue with demo entry?",
-                    "Demo Mode - Confirm Entry",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (result == MessageBoxResult.No) return;
-            }
-            // YOUR EXISTING LOGIC STARTS HERE
             var id = PatientIdBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(id))
             {
                 MessageBox.Show("Please enter a Patient ID.");
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"Processing Patient ID: '{id}' | Edit Mode: {isInEditMode}");
 
             // Validate score ranges
             var validationErrors = new List<string>();
@@ -767,95 +488,222 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            if (!patientData.ContainsKey(id))
-                patientData[id] = new();
-
             var selectedDate = DatePicker.SelectedDate ?? DateTime.Today;
+            System.Diagnostics.Debug.WriteLine($"Selected Date: {selectedDate:yyyy-MM-dd}");
 
-            // Get current user info for audit fields
-            var currentUsername = authService?.GetCurrentUsername() ??
-                                 currentUserService?.CurrentUser?.Username ??
-                                 "Unknown";
-
-            var currentUserId = authService?.CurrentUser?.Id ??
-                               currentUserService?.CurrentUser?.Id;
-
-            // Check for duplicate date entries
-            var existingEntry = patientData[id].FirstOrDefault(e => e.Date.Date == selectedDate.Date);
-            if (existingEntry != null)
+            try
             {
-                var result = MessageBox.Show(
-                    $"There is already a score entry for patient {id} on {selectedDate:yyyy-MM-dd}.\n\n" +
-                    "Would you like to update the existing entry instead?",
-                    "Duplicate Date Entry",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
+                System.Diagnostics.Debug.WriteLine("DATABASE OPERATION START");
 
-                if (result == MessageBoxResult.Yes)
+                // Clear change tracker to avoid stale data
+                _dbContext.ChangeTracker.Clear();
+                System.Diagnostics.Debug.WriteLine("Change tracker cleared");
+
+                if (isInEditMode && editingEntry != null)
                 {
-                    // Update existing entry
-                    existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
-                    existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
-                    existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
-                    existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
-                    existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
-                    existingEntry.Note = NoteBox.Text.Trim();
-                    existingEntry.UpdatedBy = currentUsername;
-                    existingEntry.UpdatedByUserId = currentUserId;
-                    existingEntry.UpdatedAt = DateTime.UtcNow;
+                    // EDIT MODE: Update the specific existing record by ID
+                    System.Diagnostics.Debug.WriteLine($"EDIT MODE: Updating existing entry ID {editingEntry.Id}");
+
+                    var existingEntry = await _dbContext.ScoreEntries
+                        .FirstOrDefaultAsync(e => e.Id == editingEntry.Id);
+
+                    if (existingEntry != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Found existing entry for update: ID {existingEntry.Id}");
+
+                        // Update the existing entry
+                        existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
+                        existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
+                        existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
+                        existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
+                        existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
+                        existingEntry.Note = NoteBox.Text.Trim();
+
+                        // Mark as modified
+                        var entityEntry = _dbContext.Entry(existingEntry);
+                        entityEntry.State = EntityState.Modified;
+
+                        System.Diagnostics.Debug.WriteLine($"Entity marked as Modified, State: {entityEntry.State}");
+                    }
+                    else
+                    {
+                        MessageBox.Show("Error: Original entry not found for update.", "Update Error",
+                                       MessageBoxButton.OK, MessageBoxImage.Error);
+                        ResetEditMode();
+                        return;
+                    }
                 }
                 else
                 {
-                    return; // User chose not to update
+                    // NORMAL MODE: Check for existing entry with FRESH query
+                    var existingEntry = await _dbContext.ScoreEntries
+                        .FirstOrDefaultAsync(e => e.PatientId == id && e.Date.Date == selectedDate.Date);
+
+                    System.Diagnostics.Debug.WriteLine("NORMAL MODE: Add/Update Logic");
+                    System.Diagnostics.Debug.WriteLine($"Looking for Patient: '{id}', Date: {selectedDate.Date:yyyy-MM-dd}");
+                    System.Diagnostics.Debug.WriteLine($"existingEntry found: {existingEntry != null}");
+
+                    if (existingEntry != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("UPDATING EXISTING ENTRY");
+
+                        // Confirm with user
+                        var result = MessageBox.Show(
+                            $"⚠️ DUPLICATE ENTRY DETECTED\n\n" +
+                            $"There is already a score entry for:\n" +
+                            $"Patient: {id}\n" +
+                            $"Date: {selectedDate:yyyy-MM-dd}\n\n" +
+                            $"Would you like to update the existing entry?",
+                            "Update Existing Entry?",
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Question);
+
+                        if (result == MessageBoxResult.No)
+                        {
+                            System.Diagnostics.Debug.WriteLine("User chose NOT to update existing entry");
+                            return;
+                        }
+
+                        // Update existing entry
+                        existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
+                        existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
+                        existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
+                        existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
+                        existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
+                        existingEntry.Note = NoteBox.Text.Trim();
+
+                        // Mark as modified
+                        var entityEntry = _dbContext.Entry(existingEntry);
+                        entityEntry.State = EntityState.Modified;
+
+                        System.Diagnostics.Debug.WriteLine($"Entity State: {entityEntry.State}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine("CREATING NEW ENTRY");
+
+                        // Create new entity
+                        var newEntry = new ScoreEntry
+                        {
+                            PatientId = id,
+                            PHQ9 = TryParseOrNull(Phq9Box.Text),
+                            GAD7 = TryParseOrNull(Gad7Box.Text),
+                            BDI2 = TryParseOrNull(Bdi2Box.Text),
+                            PCL5 = TryParseOrNull(PCL5Total.Text),
+                            YBOCS = TryParseOrNull(YBOCS.Text),
+                            Note = NoteBox.Text.Trim(),
+                            Date = selectedDate
+                        };
+
+                        _dbContext.ScoreEntries.Add(newEntry);
+                        System.Diagnostics.Debug.WriteLine($"Added new entity for patient {id}");
+                    }
                 }
-            }
-            else
-            {
-                // Create new entry
-                var entry = new ScoreEntry
+
+                // Save changes (UpdateAuditFields will be called automatically)
+                System.Diagnostics.Debug.WriteLine("CALLING SaveChangesAsync");
+                var changeCount = await _dbContext.SaveChangesAsync();
+                System.Diagnostics.Debug.WriteLine($"SaveChanges returned: {changeCount} changes");
+
+                // Log the action
+                string action = isInEditMode ? "UPDATE_SCORE" : "CREATE_SCORE";
+                await _auditService.LogActionAsync(action, id, $"Saved scores for patient {id}");
+
+                // Reset edit mode if we were editing
+                if (isInEditMode)
                 {
-                    PatientId = id,
-                    PHQ9 = TryParseOrNull(Phq9Box.Text),
-                    GAD7 = TryParseOrNull(Gad7Box.Text),
-                    BDI2 = TryParseOrNull(Bdi2Box.Text),
-                    PCL5 = TryParseOrNull(PCL5Total.Text),
-                    YBOCS = TryParseOrNull(YBOCS.Text),
-                    Note = NoteBox.Text.Trim(),
-                    Date = selectedDate,
-                    CreatedBy = currentUsername,
-                    CreatedByUserId = currentUserId,
-                    CreatedAt = DateTime.UtcNow
-                };
-                patientData[id].Add(entry);
+                    ResetEditMode();
+                }
+
+                // Refresh UI
+                await LoadAllPatientsFromDatabase();
+
+                // Update patient selector if needed
+                if (!PatientSelector.Items.Contains(id))
+                {
+                    PatientSelector.Items.Add(id);
+                }
+                PatientSelector.SelectedItem = id;
+
+                // Clear input fields
+                ClearInputFields();
+
+                string successMessage = isInEditMode ?
+                    "✅ Patient data updated successfully!" :
+                    "✅ Patient data saved successfully!";
+
+                MessageBox.Show(successMessage, "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                System.Diagnostics.Debug.WriteLine("AddScore_Click Completed Successfully");
             }
-
-            if (!PatientSelector.Items.Contains(id))
-                PatientSelector.Items.Add(id);
-            PatientSelector.SelectedItem = id;
-
-            UpdateChartForPatient(id);
-
-            // Clear inputs
-            Phq9Box.Clear(); Gad7Box.Clear(); Bdi2Box.Clear();
-            PCL5Total.Clear(); YBOCS.Clear(); NoteBox.Clear(); PatientIdBox.Clear();
-            DatePicker.SelectedDate = DateTime.Today;
-
-            ScoresGrid.ItemsSource = null;
-            ScoresGrid.ItemsSource = patientData[id];
-
-            // ADDED: Show appropriate feedback at the end
-            if (isDemoMode)
+            catch (Exception ex)
             {
-                MessageBox.Show("Demo entry added! (Not permanently saved)",
-                               "Demo Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else if (isPresentationMode && RoleHelper.IsResearcher(currentUser))
-            {
-                MessageBox.Show("✅ Data entry demonstrated successfully!\n\nThis shows how the system maintains data quality and provides real-time validation.",
-                               "Presentation Demo Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Diagnostics.Debug.WriteLine($"ERROR in AddScore_Click");
+                System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}");
+
+                // Reset edit mode on error
+                if (isInEditMode)
+                {
+                    ResetEditMode();
+                }
+
+                MessageBox.Show($"❌ Error saving to database: {ex.Message}", "Database Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
+        private void ResetEditMode()
+        {
+            isInEditMode = false;
+            editingEntry = null;
+            AddScoreButton.Content = "Add Score";
+            AddScoreButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(70, 130, 180)); // Steel Blue
+            System.Diagnostics.Debug.WriteLine("Edit mode reset");
+        }
+
+        private void ClearInputFields()
+        {
+            Phq9Box.Clear();
+            Gad7Box.Clear();
+            Bdi2Box.Clear();
+            PCL5Total.Clear();
+            YBOCS.Clear();
+            NoteBox.Clear();
+            PatientIdBox.Clear();
+            DatePicker.SelectedDate = DateTime.Today;
+        }
+
+        private async Task LoadAllPatientsFromDatabase()
+        {
+            try
+            {
+                var allEntries = await _dbContext.ScoreEntries
+                    .OrderBy(e => e.PatientId)
+                    .ThenBy(e => e.Date)
+                    .ToListAsync();
+
+                patientData.Clear();
+                PatientSelector.Items.Clear();
+
+                foreach (var group in allEntries.GroupBy(e => e.PatientId))
+                {
+                    patientData[group.Key] = group.ToList();
+                }
+
+                foreach (var patientId in patientData.Keys.OrderBy(x => x))
+                {
+                    PatientSelector.Items.Add(patientId);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Loaded {patientData.Keys.Count} patients from database");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading patients: {ex.Message}");
+                MessageBox.Show($"Error loading data: {ex.Message}", "Database Error",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
 
         private void LogoutButton_Click(object sender, RoutedEventArgs e)
         {
@@ -907,7 +755,6 @@ namespace PatientTrackerWPF
             }
         }
 
-
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             if (authService?.IsAuthenticated == true)
@@ -930,6 +777,7 @@ namespace PatientTrackerWPF
 
             base.OnClosing(e);
         }
+
         private int? TryParseOrNull(string txt)
             => int.TryParse(txt, out var v) ? v : null;  // Return null instead of -1
 
@@ -973,23 +821,23 @@ namespace PatientTrackerWPF
                     return;
                 }
 
-                // FIXED: Only add data points when scores exist (not null)
+                // Only add data points when scores exist (not null)
                 foreach (var entry in scores)
                 {
                     // Only add data points for actual scores, skip null values
-                    if (entry.PHQ9.HasValue)  // FIXED: Check HasValue instead of >= 0
+                    if (entry.PHQ9.HasValue)
                         Phq9Values.Add(new DateTimePoint(entry.Date, (double)entry.PHQ9.Value));
 
-                    if (entry.GAD7.HasValue)  // FIXED: Check HasValue instead of >= 0
+                    if (entry.GAD7.HasValue)
                         Gad7Values.Add(new DateTimePoint(entry.Date, (double)entry.GAD7.Value));
 
-                    if (entry.BDI2.HasValue)  // FIXED: Check HasValue instead of >= 0
+                    if (entry.BDI2.HasValue)
                         Bdi2Values.Add(new DateTimePoint(entry.Date, (double)entry.BDI2.Value));
 
-                    if (entry.PCL5.HasValue)  // FIXED: Check HasValue instead of >= 0
+                    if (entry.PCL5.HasValue)
                         Pcl5Values.Add(new DateTimePoint(entry.Date, (double)entry.PCL5.Value));
 
-                    if (entry.YBOCS.HasValue)  // FIXED: Check HasValue instead of >= 0
+                    if (entry.YBOCS.HasValue)
                         YbocsValues.Add(new DateTimePoint(entry.Date, (double)entry.YBOCS.Value));
                 }
 
@@ -1014,7 +862,7 @@ namespace PatientTrackerWPF
                 PatientProgressChart.AxisX[0].MinValue = firstDate.Ticks;
                 PatientProgressChart.AxisX[0].MaxValue = lastDate.Ticks;
 
-                // FIXED: Smart date separator with error handling
+                // Smart date separator with error handling
                 SetSmartDateSeparator(scores, firstDate, lastDate);
 
                 PatientProgressChart.Update(true, true);
@@ -1031,14 +879,11 @@ namespace PatientTrackerWPF
             }
         }
 
-
-
-
         private void SetSmartDateSeparator(List<ScoreEntry> scores, DateTime firstDate, DateTime lastDate)
         {
             try
             {
-                // FIXED: Add null checks
+                // Add null checks
                 if (PatientProgressChart?.AxisX == null || PatientProgressChart.AxisX.Count == 0)
                 {
                     return; // Exit safely if chart or axis is not ready
@@ -1076,7 +921,7 @@ namespace PatientTrackerWPF
 
                     if (totalDays <= 30)
                     {
-                        // Within a month - show weeklyFup
+                        // Within a month - show weekly
                         xAxis.Separator.Step = TimeSpan.FromDays(7).Ticks;
                     }
                     else if (totalDays <= 90)
@@ -1093,15 +938,13 @@ namespace PatientTrackerWPF
             }
             catch (Exception ex)
             {
-                // FIXED: Graceful error handling - just log and continue
+                // Graceful error handling - just log and continue
                 System.Diagnostics.Debug.WriteLine($"Error setting date separator: {ex.Message}");
                 // Don't show error to user, just use default separator
             }
         }
 
         // ─── Notes Overlay ───────────────────────────────────────────────────
-
-
         private void UpdateChartNotesForPatient(string patientId)
         {
             ChartNotesCanvas.Children.Clear();
@@ -1156,7 +999,6 @@ namespace PatientTrackerWPF
                 BorderBrush = Brushes.Gray,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(3),
-                /*       Padding = new Thickness(8, 4),*/
                 Width = width,
                 Height = height,
                 Cursor = Cursors.Hand
@@ -1210,10 +1052,10 @@ namespace PatientTrackerWPF
             return colors[index % colors.Length];
         }
 
-        private void GenerateProfessionalReport_Click(object sender, RoutedEventArgs e)
+        private async void GenerateProfessionalReport_Click(object sender, RoutedEventArgs e)
         {
             var patientId = PatientSelector.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
+            if (string.IsNullOrWhiteSpace(patientId))
             {
                 MessageBox.Show("Please select a valid patient.");
                 return;
@@ -1223,10 +1065,18 @@ namespace PatientTrackerWPF
             {
                 Mouse.OverrideCursor = Cursors.Wait;
 
-                var entries = patientData[patientId].OrderBy(e => e.Date).ToList();
+                List<ScoreEntry> entries;
+
+                System.Diagnostics.Debug.WriteLine("Production mode: Using database data for report");
+
+                entries = await _dbContext.ScoreEntries
+                    .Where(e => e.PatientId == patientId)
+                    .OrderBy(e => e.Date)
+                    .ToListAsync();
+
                 if (!entries.Any())
                 {
-                    MessageBox.Show("No data available for this patient.");
+                    MessageBox.Show($"No data available for patient {patientId} in database.");
                     return;
                 }
 
@@ -1309,8 +1159,8 @@ namespace PatientTrackerWPF
                 g.DrawString("MENTAL HEALTH", new DrawingFont("Arial", 10), DrawingBrushes.LightGray, 50, 45);
 
                 // Report title
-                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 300, 20);
-                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 350, 50);
+                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 400, 20);
+                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 400, 50);
             }
 
             currentY = 140;
@@ -1319,8 +1169,9 @@ namespace PatientTrackerWPF
             g.DrawString($"Patient ID: {patientId}", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
             currentY += 25;
             g.DrawString($"Report Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}", bodyFont, new SolidBrush(darkGray), 50, currentY);
+            currentY += 20; 
             g.DrawString($"Assessment Period: {entries.First().Date:MMM dd, yyyy} to {entries.Last().Date:MMM dd, yyyy}",
-                        bodyFont, new SolidBrush(darkGray), 400, currentY);
+                        bodyFont, new SolidBrush(darkGray), 50, currentY);
             currentY += 40;
 
             // DATA TABLE SECTION
@@ -1441,12 +1292,12 @@ namespace PatientTrackerWPF
                 // Data values
                 var values = new string[]
                 {
-            entry.Date.ToString("dd-MMM-yyyy"),
-            entry.PHQ9?.ToString() ?? "—",
-            entry.GAD7?.ToString() ?? "—",
-            entry.BDI2?.ToString() ?? "—",
-            entry.PCL5?.ToString() ?? "—",
-            entry.YBOCS?.ToString() ?? "—"
+                    entry.Date.ToString("dd-MMM-yyyy"),
+                    entry.PHQ9?.ToString() ?? "—",
+                    entry.GAD7?.ToString() ?? "—",
+                    entry.BDI2?.ToString() ?? "—",
+                    entry.PCL5?.ToString() ?? "—",
+                    entry.YBOCS?.ToString() ?? "—"
                 };
 
                 // Draw cells
@@ -1492,23 +1343,23 @@ namespace PatientTrackerWPF
             g.FillRectangle(DrawingBrushes.White, chartArea);
             g.DrawRectangle(DrawingPens.Gray, chartArea);
 
-            // Treatment phase background
+   /*         // Treatment phase background
             var phaseStart = entries.Count > 2 ? 0.2f : 0;
-            var phaseEnd = entries.Count > 4 ? 0.8f : 1;
-
+            var phaseEnd = entries.Count > 4 ? 0.8f : 1;*/
+/*
             var phaseStartX = chartArea.X + (int)(chartArea.Width * phaseStart);
-            var phaseWidth = (int)(chartArea.Width * (phaseEnd - phaseStart));
+            var phaseWidth = (int)(chartArea.Width * (phaseEnd - phaseStart));*/
 
-            using (var phaseBrush = new SolidBrush(treatmentPhase))
+   /*         using (var phaseBrush = new SolidBrush(treatmentPhase))
             {
                 g.FillRectangle(phaseBrush, phaseStartX, chartArea.Y, phaseWidth, chartArea.Height);
             }
-
-            // Add phase label
+*/
+ /*           // Add phase label
             g.DrawString("Treatment Phase", new DrawingFont("Arial", 8), new SolidBrush(reconnectBlue),
                         phaseStartX + 10, chartArea.Y + 10);
-
-            // FIXED: Determine Y-axis range based on actual data
+*/
+            // Determine Y-axis range based on actual data
             var allScores = new List<int>();
             foreach (var entry in entries)
             {
@@ -1519,7 +1370,7 @@ namespace PatientTrackerWPF
                 if (entry.YBOCS.HasValue) allScores.Add(entry.YBOCS.Value);
             }
 
-            // FIXED: Use actual data range instead of fixed 0-80
+            // Use actual data range instead of fixed 0-80
             var minScore = allScores.Any() ? Math.Max(0, allScores.Min() - 5) : 0;
             var maxScore = allScores.Any() ? Math.Min(80, allScores.Max() + 10) : 80;
             var scoreRange = maxScore - minScore;
@@ -1531,7 +1382,7 @@ namespace PatientTrackerWPF
                 var gridY = chartArea.Y + (i * chartArea.Height / gridSteps);
                 g.DrawLine(DrawingPens.LightGray, chartArea.X, gridY, chartArea.Right, gridY);
 
-                // FIXED: Y-axis labels based on actual range
+                // Y-axis labels based on actual range
                 var value = maxScore - (i * scoreRange / gridSteps);
                 g.DrawString(((int)value).ToString(), new DrawingFont("Arial", 8), DrawingBrushes.Black,
                             chartArea.X - 30, gridY - 6);
@@ -1544,7 +1395,7 @@ namespace PatientTrackerWPF
                 g.DrawLine(DrawingPens.LightGray, gridX, chartArea.Y, gridX, chartArea.Bottom);
             }
 
-            // FIXED: Plot assessment lines with correct scaling
+            // Plot assessment lines with correct scaling
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.PHQ9, DrawingColor.Blue, "PHQ-9", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.GAD7, DrawingColor.Green, "GAD-7", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.BDI2, DrawingColor.Orange, "BDI-II", minScore, maxScore);
@@ -1554,12 +1405,12 @@ namespace PatientTrackerWPF
             // Draw legend
             DrawChartLegend(g, chartArea.Right - 200, chartArea.Y);
 
-            // FIXED: X-axis labels (dates) - better spacing
+            // X-axis labels (dates) - better spacing
             var dateStep = Math.Max(1, entries.Count / 6);
             for (int i = 0; i < entries.Count; i += dateStep)
             {
                 var entry = entries[i];
-                // FIXED: Proper X positioning for dates
+                // Proper X positioning for dates
                 var pointX = chartArea.X + (i * chartArea.Width / Math.Max(1, entries.Count - 1));
                 g.DrawString(entry.Date.ToString("dd-MMM"), new DrawingFont("Arial", 8), DrawingBrushes.Black,
                             pointX - 20, chartArea.Bottom + 10);
@@ -1580,11 +1431,11 @@ namespace PatientTrackerWPF
                 var score = scoreSelector(entries[i]);
                 if (score.HasValue)
                 {
-                    // FIXED: Correct X positioning
+                    // Correct X positioning
                     var x = chartArea.X + (entries.Count == 1 ? chartArea.Width / 2 :
                            (i * chartArea.Width / Math.Max(1, entries.Count - 1)));
 
-                    // FIXED: Correct Y positioning with proper scaling
+                    // Correct Y positioning with proper scaling
                     var normalizedScore = (score.Value - minScore) / scoreRange;
                     var y = chartArea.Bottom - (int)(normalizedScore * chartArea.Height);
 
@@ -1611,7 +1462,7 @@ namespace PatientTrackerWPF
                     g.FillEllipse(brush, point.X - 4, point.Y - 4, 8, 8);
                     g.DrawEllipse(DrawingPens.White, point.X - 4, point.Y - 4, 8, 8);
 
-                    // FIXED: Add score labels on points
+                    // Add score labels on points
                     var scoreValue = scoreSelector(entries[GetEntryIndexForPoint(entries, i, scoreSelector)]);
                     if (scoreValue.HasValue)
                     {
@@ -1621,6 +1472,7 @@ namespace PatientTrackerWPF
                 }
             }
         }
+
         // Helper method to get the correct entry index for a point
         private int GetEntryIndexForPoint(List<ScoreEntry> entries, int pointIndex, Func<ScoreEntry, int?> scoreSelector)
         {
@@ -1637,15 +1489,13 @@ namespace PatientTrackerWPF
             return 0; // Fallback
         }
 
-
-
-        private void DeletePatient_Click(object sender, RoutedEventArgs e)
+        private async void DeletePatient_Click(object sender, RoutedEventArgs e)
         {
-            // Admin-only check
-            if (!RoleHelper.IsAdmin(currentUser))
+            //  Allow both Admin and Doctor to delete patients
+            if (!RoleHelper.IsAdmin(currentUser) && !RoleHelper.IsDoctor(currentUser))
             {
-                MessageBox.Show("⚠️ Access Denied\n\nOnly Administrators can delete patient data.",
-                               "Admin Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("⚠️ Access Denied\n\nOnly Administrators and Doctors can delete patient data.",
+                               "Access Denied", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1657,114 +1507,91 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            // Show patient data summary before deletion
-            if (!patientData.ContainsKey(selectedPatientId))
-            {
-                MessageBox.Show("Patient data not found.", "Error",
-                               MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            var patientEntries = patientData[selectedPatientId];
-            var patientSummary = $"Patient ID: {selectedPatientId}\n" +
-                                $"Total Assessments: {patientEntries.Count}\n" +
-                                $"Date Range: {(patientEntries.Any() ? $"{patientEntries.Min(e => e.Date):yyyy-MM-dd} to {patientEntries.Max(e => e.Date):yyyy-MM-dd}" : "No data")}\n" +
-                                $"Assessment Types: {GetAssessmentTypesSummary(patientEntries)}";
-
-            // First confirmation - show what will be deleted
-            var confirmResult = MessageBox.Show(
-                $"🚨 PATIENT DATA DELETION REQUEST\n\n" +
-                $"You are about to PERMANENTLY delete ALL data for:\n\n" +
-                $"{patientSummary}\n\n" +
-                $"⚠️ THIS ACTION CANNOT BE UNDONE!\n\n" +
-                $"📋 Reason: Patient consent withdrawal / Right to be forgotten\n\n" +
-                $"Continue with deletion?",
-                "Confirm Patient Data Deletion",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (confirmResult == MessageBoxResult.No) return;
-
-            // Second confirmation - final safety check
-            var finalConfirm = MessageBox.Show(
-                $"🛑 FINAL CONFIRMATION\n\n" +
-                $"This will PERMANENTLY DELETE ALL DATA for Patient {selectedPatientId}\n\n" +
-                $"Type YES in the next dialog to confirm deletion.",
-                "Final Deletion Confirmation",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Stop);
-
-            if (finalConfirm == MessageBoxResult.Cancel) return;
-
-            // Text input confirmation
-            var inputDialog = Microsoft.VisualBasic.Interaction.InputBox(
-                "Type 'DELETE' to confirm permanent removal of all patient data:",
-                "Deletion Confirmation",
-                "");
-
-            if (inputDialog.ToUpper() != "DELETE")
-            {
-                MessageBox.Show("Deletion cancelled - confirmation text did not match.",
-                               "Deletion Cancelled", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
             try
             {
-                Mouse.OverrideCursor = Cursors.Wait;
+                using var context = new AppDbContext();
 
-                // Perform the deletion
-                var deletedCount = patientEntries.Count;
-                var deletionAudit = CreateDeletionAuditRecord(selectedPatientId, patientEntries);
+                // Get all entries for this patient from DATABASE
+                var patientEntries = await context.ScoreEntries
+                    .Where(e => e.PatientId == selectedPatientId)
+                    .ToListAsync();
 
-                // Remove from data dictionary
-                patientData.Remove(selectedPatientId);
+                if (!patientEntries.Any())
+                {
+                    MessageBox.Show("No data found for this patient in database.", "No Data",
+                                   MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
 
-                // Remove from UI selector
+                var patientSummary = $"Patient ID: {selectedPatientId}\n" +
+                                    $"Total Assessments: {patientEntries.Count}\n" +
+                                    $"Date Range: {patientEntries.Min(e => e.Date):yyyy-MM-dd} to {patientEntries.Max(e => e.Date):yyyy-MM-dd}";
+
+                // Confirmation dialog
+                var confirmResult = MessageBox.Show(
+                    $"🚨 PATIENT DATA DELETION\n\n" +
+                    $"You are about to PERMANENTLY delete ALL data for:\n\n" +
+                    $"{patientSummary}\n\n" +
+                    $"⚠️ THIS ACTION CANNOT BE UNDONE!\n\n" +
+                    $"Continue with deletion?",
+                    "Confirm Patient Data Deletion",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (confirmResult == MessageBoxResult.No) return;
+
+                // Final confirmation
+                var inputDialog = Microsoft.VisualBasic.Interaction.InputBox(
+                    "Type 'DELETE' to confirm permanent removal:",
+                    "Final Confirmation", "");
+
+                if (inputDialog.ToUpper() != "DELETE")
+                {
+                    MessageBox.Show("Deletion cancelled.", "Cancelled",
+                                   MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+
+                // DELETE FROM DATABASE
+                context.ScoreEntries.RemoveRange(patientEntries);
+                await context.SaveChangesAsync();
+
+                // Log the deletion
+                await _auditService.LogActionAsync("DELETE_PATIENT", selectedPatientId,
+                                                 $"Deleted {patientEntries.Count} records for patient {selectedPatientId}");
+
+                // COMPREHENSIVE UI REFRESH
+                // 1. Remove from in-memory dictionary
+                if (patientData.ContainsKey(selectedPatientId))
+                {
+                    patientData.Remove(selectedPatientId);
+                }
+
+                // 2. Remove from patient selector
                 PatientSelector.Items.Remove(selectedPatientId);
 
-                // Clear current display if this patient was selected
-                if (PatientSelector.SelectedItem == null || PatientSelector.Items.Count == 0)
-                {
-                    ClearPatientDisplay();
-                }
-                else
-                {
-                    // Select first available patient
-                    PatientSelector.SelectedIndex = 0;
-                }
+                // 3. Clear current selection and display
+                PatientSelector.SelectedItem = null;
+                ClearPatientDisplay();
 
-                // Reset metrics if they were calculated
-                if (currentMetrics != null)
-                {
-                    ResetMetricsDisplay();
-                    currentMetrics = null;
-                }
+                // 4. Reload all data from database to ensure sync
+                await LoadAllPatientsFromDatabase();
 
-                // Log the deletion for audit trail
-                LogPatientDeletion(selectedPatientId, deletedCount, deletionAudit);
+                // 5. Reset the patient ID box
+                PatientIdBox.Clear();
 
-                // Success message
-                MessageBox.Show(
-                    $"✅ Patient Data Deleted Successfully\n\n" +
-                    $"Patient ID: {selectedPatientId}\n" +
-                    $"Records Deleted: {deletedCount}\n" +
-                    $"Deleted By: {authService?.GetCurrentUsername() ?? "System"}\n" +
-                    $"Deletion Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n\n" +
-                    $"📝 Audit record has been created for compliance.",
-                    "Deletion Complete",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                // 6. Refresh the main data grid
+                ScoresGrid.ItemsSource = null;
 
+                MessageBox.Show($"✅ Patient {selectedPatientId} deleted successfully from database!\n\n" +
+                               $"Records deleted: {patientEntries.Count}",
+                               "Deletion Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"❌ Error during patient deletion:\n\n{ex.Message}",
-                               "Deletion Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                Mouse.OverrideCursor = null;
+                MessageBox.Show($"❌ Error deleting patient: {ex.Message}", "Database Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -1800,55 +1627,16 @@ namespace PatientTrackerWPF
             currentPatientEntries.Clear();
         }
 
-        // Helper method to create audit record
-        private string CreateDeletionAuditRecord(string patientId, List<ScoreEntry> entries)
-        {
-            var audit = $"PATIENT_DELETION_AUDIT_{DateTime.Now:yyyyMMddHHmmss}\n" +
-                        $"Patient_ID: {patientId}\n" +
-                        $"Records_Deleted: {entries.Count}\n" +
-                        $"Date_Range: {(entries.Any() ? $"{entries.Min(e => e.Date):yyyy-MM-dd} to {entries.Max(e => e.Date):yyyy-MM-dd}" : "No data")}\n" +
-                        $"Deleted_By: {authService?.GetCurrentUsername() ?? "System"}\n" +
-                        $"Deleted_At: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC\n" +
-                        $"Reason: Patient consent withdrawal - Right to be forgotten\n" +
-                        $"Assessment_Details:\n";
-
-            foreach (var entry in entries.OrderBy(e => e.Date))
-            {
-                audit += $"  - {entry.Date:yyyy-MM-dd}: {GetAssessmentTypesSummary(new[] { entry }.ToList())}\n";
-            }
-
-            return audit;
-        }
-
-        // Helper method to log deletion
-        private void LogPatientDeletion(string patientId, int recordCount, string auditRecord)
-        {
-            try
-            {
-                // Create audit log file
-                var auditFileName = $"PatientDeletion_Audit_{patientId}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-                var auditPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), auditFileName);
-
-                File.WriteAllText(auditPath, auditRecord);
-
-                // Also log to system debug for development
-                System.Diagnostics.Debug.WriteLine($"PATIENT DELETION: {patientId} - {recordCount} records deleted by {authService?.GetCurrentUsername()}");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error creating deletion audit log: {ex.Message}");
-            }
-        }
         private void DrawChartLegend(DrawingGraphics g, int x, int y)
         {
             var legendItems = new[]
             {
-        ("PHQ-9", DrawingColor.Blue),
-        ("GAD-7", DrawingColor.Green),
-        ("BDI-II", DrawingColor.Orange),
-        ("PCL-5", DrawingColor.DarkCyan),
-        ("Y-BOCS", DrawingColor.Purple)
-    };
+                ("PHQ-9", DrawingColor.Blue),
+                ("GAD-7", DrawingColor.Green),
+                ("BDI-II", DrawingColor.Orange),
+                ("PCL-5", DrawingColor.DarkCyan),
+                ("Y-BOCS", DrawingColor.Purple)
+            };
 
             var currentY = y;
             foreach (var (label, color) in legendItems)
@@ -1865,29 +1653,50 @@ namespace PatientTrackerWPF
             }
         }
 
-
-
         private void NoteBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (sender is Border b && b.Tag is string txt)
                 MessageBox.Show(txt, "Full Treatment Note");
         }
 
-
-        private void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (PatientSelector.SelectedItem is string id)
             {
+                // Always load from database
+                await LoadPatientDataFromDatabase(id);
                 UpdateChartForPatient(id);
+
+                PatientIdBox.Text = id;
 
                 if (currentMetrics != null)
                 {
                     UpdateCurrentPatientOutcome(id);
                     ResetMetricsDisplay();
-
                 }
             }
         }
+
+        private async Task LoadPatientDataFromDatabase(string patientId)
+        {
+            try
+            {
+                var entries = await _dbContext.ScoreEntries
+                    .Where(e => e.PatientId == patientId)
+                    .OrderBy(e => e.Date)
+                    .ToListAsync();
+
+                patientData[patientId] = entries;
+                ScoresGrid.ItemsSource = entries;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading patient data: {ex.Message}");
+                MessageBox.Show($"Error loading patient data: {ex.Message}", "Database Error",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void ResetMetricsDisplay()
         {
             ResponseRateText.Text = "0.0%";
@@ -1905,23 +1714,42 @@ namespace PatientTrackerWPF
             RemissionRateText.Foreground = Brushes.Black;
         }
 
-
-        private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+        private async void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             filterId = FilterBox.Text.Trim();
-            var list = patientData.Values.SelectMany(v => v)
-                         .Where(r => string.IsNullOrEmpty(filterId) || r.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
-                         .OrderBy(r => r.PatientId).ThenBy(r => r.Date)
-                         .ToList();
-            ScoresGrid.ItemsSource = list;
+
+            try
+            {
+                using var context = new AppDbContext();
+
+                // FILTER FROM DATABASE instead of patientData dictionary
+                var filteredEntries = await _dbContext.ScoreEntries
+                    .Where(r => string.IsNullOrEmpty(filterId) ||
+                               r.PatientId.ToLower().Contains(filterId.ToLower()))
+                    .OrderBy(r => r.PatientId)
+                    .ThenBy(r => r.Date)
+                    .ToListAsync();
+
+                ScoresGrid.ItemsSource = filteredEntries;
+
+                // Debug info
+                System.Diagnostics.Debug.WriteLine($"Filter '{filterId}' returned {filteredEntries.Count} entries");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Filter error: {ex.Message}");
+                MessageBox.Show($"Filter error: {ex.Message}", "Filter Error",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
-
-
-        private void CalculateMetrics_Click(object sender, RoutedEventArgs e)
+        private async void CalculateMetrics_Click(object sender, RoutedEventArgs e)
         {
             try
             {
+                // LOAD FRESH DATA FROM DATABASE instead of using patientData dictionary
+                await LoadAllPatientsFromDatabase();
+
                 currentMetrics = metricsService.CalculateBDI2Metrics(patientData);
                 UpdateMetricsDisplay(currentMetrics);
 
@@ -1931,7 +1759,7 @@ namespace PatientTrackerWPF
                     UpdateCurrentPatientOutcome(selectedPatientId);
                 }
 
-                MessageBox.Show($"Metrics calculated successfully!\n\n" +
+                MessageBox.Show($"✅ Metrics calculated from database!\n\n" +
                                $"Eligible patients: {currentMetrics.PatientsWithMultipleAssessments}\n" +
                                $"Response rate: {currentMetrics.ResponseRate:F1}%\n" +
                                $"Remission rate: {currentMetrics.RemissionRate:F1}%",
@@ -1939,10 +1767,11 @@ namespace PatientTrackerWPF
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error calculating metrics: {ex.Message}", "Error",
+                MessageBox.Show($"❌ Error calculating metrics: {ex.Message}", "Error",
                                MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
         private bool isMetricsExpanded = false;
 
         private void ToggleMetrics_Click(object sender, MouseButtonEventArgs e)
@@ -1966,18 +1795,16 @@ namespace PatientTrackerWPF
         private void UpdateMetricsDisplay(ClinicalMetricsService.ClinicalMetrics metrics)
         {
             ResponseRateText.Text = $"{metrics.ResponseRate:F1}%";
-            ResponseCountText.Text = $"({metrics.ResponseCount}/{metrics.PatientsWithMultipleAssessments})"; // Removed "patients"
+            ResponseCountText.Text = $"({metrics.ResponseCount}/{metrics.PatientsWithMultipleAssessments})";
 
             RemissionRateText.Text = $"{metrics.RemissionRate:F1}%";
-            RemissionCountText.Text = $"({metrics.RemissionCount}/{metrics.PatientsWithMultipleAssessments})"; // Removed "patients"
+            RemissionCountText.Text = $"({metrics.RemissionCount}/{metrics.PatientsWithMultipleAssessments})";
 
             AverageImprovementText.Text = $"{metrics.AverageImprovement:F1}%";
             EligiblePatientsText.Text = metrics.PatientsWithMultipleAssessments.ToString();
 
-
             QuickResponseRate.Text = $"{metrics.ResponseRate:F1}%";
             QuickRemissionRate.Text = $"{metrics.RemissionRate:F1}%";
-        
 
             // Color coding
             ResponseRateText.Foreground = metrics.ResponseRate >= 50 ? Brushes.Green :
@@ -2029,12 +1856,23 @@ namespace PatientTrackerWPF
             try
             {
                 var report = metricsService.GenerateMetricsReport(currentMetrics);
-                var fileName = $"BDI2_ClinicalOutcomes_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
 
-                File.WriteAllText(fileName, report);
+                // Show Save Dialog
+                var saveDialog = new SaveFileDialog
+                {
+                    Title = "Save Clinical Metrics Report",
+                    Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+                    FileName = $"BDI2_ClinicalOutcomes_{DateTime.Now:yyyyMMdd_HHmm}.txt",
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                };
 
-                MessageBox.Show($"Clinical outcomes report exported to {fileName}", "Export Successful",
-                               MessageBoxButton.OK, MessageBoxImage.Information);
+                if (saveDialog.ShowDialog() == true)
+                {
+                    File.WriteAllText(saveDialog.FileName, report);
+
+                    MessageBox.Show($"Clinical outcomes report saved successfully!\n\nLocation: {saveDialog.FileName}",
+                                   "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             }
             catch (Exception ex)
             {
@@ -2043,6 +1881,30 @@ namespace PatientTrackerWPF
             }
         }
 
+
+        private void UserManagement_Click(object sender, RoutedEventArgs e)
+{
+    try
+    {
+        // Only admins can access user management
+        if (!RoleHelper.IsAdmin(currentUser))
+        {
+            MessageBox.Show("Only administrators can manage user accounts.", 
+                           "Access Denied", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Create and show user management window
+        var userManagementWindow = new UserManagementWindow(authService, _auditService, _dbContext);
+        userManagementWindow.Owner = this;
+        userManagementWindow.ShowDialog();
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show($"Error opening user management: {ex.Message}", "Error",
+                       MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+}
         private void ShowAllTimeRemissions_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -2059,37 +1921,64 @@ namespace PatientTrackerWPF
             }
         }
 
-        private void ExportToCsv_Click(object sender, RoutedEventArgs e)
+        private async void ExportToCsv_Click(object sender, RoutedEventArgs e)
         {
-            var filtered = patientData.Values.SelectMany(v => v)
-       .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId, StringComparison.OrdinalIgnoreCase))
-       .OrderBy(s => s.PatientId)
-       .ThenBy(s => s.Date)
-       .ToList();
-
-            if (!filtered.Any())
+            try
             {
-                MessageBox.Show("No matching data to export.");
-                return;
-            }
+                using var context = new AppDbContext();
 
-            var sb = new StringBuilder();
-            sb.AppendLine("PatientId,Date,PHQ9,GAD7,BDI2,PCL5,YBOCS,Note");
-            foreach (var s in filtered)
+                // LOAD FROM DATABASE
+                var allEntries = await _dbContext.ScoreEntries
+                    .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId))
+                    .OrderBy(s => s.PatientId)
+                    .ThenBy(s => s.Date)
+                    .ToListAsync();
+
+                if (!allEntries.Any())
+                {
+                    MessageBox.Show("No matching data to export from database.");
+                    return;
+                }
+
+                // Show Save Dialog
+                var saveDialog = new SaveFileDialog
+                {
+                    Title = "Save Patient Data Export",
+                    Filter = "CSV Files (*.csv)|*.csv|All Files (*.*)|*.*",
+                    FileName = $"PatientScores_Export_{DateTime.Now:yyyyMMdd_HHmm}.csv",
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                };
+
+                if (saveDialog.ShowDialog() == true)
+                {
+                    await _auditService.LogActionAsync("EXPORT_DATA", filterId, $"Exported {allEntries.Count} records");
+
+                    var sb = new StringBuilder();
+                    sb.AppendLine("PatientId,Date,PHQ9,GAD7,BDI2,PCL5,YBOCS,Note,CreatedBy,CreatedAt");
+
+                    foreach (var s in allEntries)
+                    {
+                        var phq9Str = s.PHQ9?.ToString() ?? "-";
+                        var gad7Str = s.GAD7?.ToString() ?? "-";
+                        var bdi2Str = s.BDI2?.ToString() ?? "-";
+                        var pcl5Str = s.PCL5?.ToString() ?? "-";
+                        var ybocsStr = s.YBOCS?.ToString() ?? "-";
+                        var note = s.Note?.Replace("\"", "\"\"") ?? "";
+
+                        sb.AppendLine($"{s.PatientId},{s.Date:yyyy-MM-dd},{phq9Str},{gad7Str},{bdi2Str},{pcl5Str},{ybocsStr},\"{note}\",{s.CreatedBy},{s.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+                    }
+
+                    File.WriteAllText(saveDialog.FileName, sb.ToString());
+
+                    MessageBox.Show($"✅ Exported {allEntries.Count} records successfully!\n\nSaved to: {saveDialog.FileName}",
+                                   "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
             {
-                // FIXED: Handle null values properly in CSV export - use simple dash for CSV compatibility
-                var phq9Str = s.PHQ9.HasValue ? s.PHQ9.Value.ToString() : "-";
-                var gad7Str = s.GAD7.HasValue ? s.GAD7.Value.ToString() : "-";
-                var bdi2Str = s.BDI2.HasValue ? s.BDI2.Value.ToString() : "-";
-                var pcl5Str = s.PCL5.HasValue ? s.PCL5.Value.ToString() : "-";
-                var ybocsStr = s.YBOCS.HasValue ? s.YBOCS.Value.ToString() : "-";
-
-                sb.AppendLine($"{s.PatientId},{s.Date:yyyy-MM-dd},{phq9Str},{gad7Str},{bdi2Str},{pcl5Str},{ybocsStr},\"{s.Note?.Replace("\"", "\"\"")}\"");
+                MessageBox.Show($"❌ Export error: {ex.Message}", "Export Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
             }
-
-            var filePath = $"PatientScores_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
-            File.WriteAllText(filePath, sb.ToString());
-            MessageBox.Show($"Exported to {filePath}", "Success");
         }
 
         private void BackupNowButton_Click(object sender, RoutedEventArgs e)
@@ -2099,7 +1988,7 @@ namespace PatientTrackerWPF
                 Mouse.OverrideCursor = Cursors.Wait;
 
                 // Export data as CSV string
-                var csvData = ExportAllDataForBackup(); // ← Use this method name
+                var csvData = ExportAllDataForBackup();
 
                 // Prompt user with SaveFileDialog
                 var saveDialog = new SaveFileDialog
@@ -2133,7 +2022,6 @@ namespace PatientTrackerWPF
             }
         }
 
-
         // ADD this helper method for proper CSV escaping:
         private string EscapeCsvField(string field)
         {
@@ -2156,7 +2044,7 @@ namespace PatientTrackerWPF
             if (!allEntries.Any())
                 return "No data";
 
-            // FIX: Handle nullable DateTime properly
+            // Handle nullable DateTime properly
             var dates = allEntries.Select(e => e.Date).ToList();
             var earliest = dates.Min();
             var latest = dates.Max();
@@ -2169,7 +2057,7 @@ namespace PatientTrackerWPF
 
         private void ImportCsvButton_Click(object sender, RoutedEventArgs e)
         {
-            // ADDED: Admin-only check
+            // Admin-only check
             if (!RoleHelper.IsAdmin(currentUser))
             {
                 MessageBox.Show("⚠️ Access Denied\n\nOnly Administrators can import data.",
@@ -2207,16 +2095,10 @@ namespace PatientTrackerWPF
                 {
                     Mouse.OverrideCursor = Cursors.Wait;
 
-    /*                // Show progress message
-                    var progressWindow = new ProgressMessageWindow("Importing data...");
-                    progressWindow.Show();*/
-
                     try
                     {
                         // Read and parse CSV file
                         var importResult = ImportCsvData(openDialog.FileName);
-/*
-                        progressWindow.Close();*/
 
                         if (importResult.Success)
                         {
@@ -2255,7 +2137,6 @@ namespace PatientTrackerWPF
                     }
                     catch (Exception ex)
                     {
-                  /*      progressWindow.Close();*/
                         MessageBox.Show($"❌ Import failed:\n\n" +
                                        $"📁 File: {Path.GetFileName(openDialog.FileName)}\n\n" +
                                        $"💬 Error: {ex.Message}\n\n" +
@@ -2524,10 +2405,6 @@ namespace PatientTrackerWPF
             }
         }
 
-        // STEP 4: Add this helper class to track import results:
-
-
-
         private string ExportAllDataForBackup()
         {
             var sb = new StringBuilder();
@@ -2563,7 +2440,7 @@ namespace PatientTrackerWPF
                 var createdBy = EscapeCsvField(entry.CreatedBy ?? "");
                 var updatedBy = EscapeCsvField(entry.UpdatedBy ?? "");
 
-                // FIX: Handle nullable DateTime properly
+                // Handle nullable DateTime properly
                 var createdAt = entry.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
 
                 var updatedAt = entry.UpdatedAt.HasValue ? entry.UpdatedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : "";
@@ -2574,214 +2451,12 @@ namespace PatientTrackerWPF
             return sb.ToString();
         }
 
-        //Export to PNG ──────────────────────────────────────────────────────
-
-
-
-        //private async void ExportToPng_Click(object sender, RoutedEventArgs e)
-        //{
-        //    var patientId = PatientSelector.Text?.Trim();
-        //    if (string.IsNullOrWhiteSpace(patientId) || !patientData.ContainsKey(patientId))
-        //    {
-        //        MessageBox.Show("Please select a valid patient.");
-        //        return;
-        //    }
-
-        //    // Store original window state
-        //    var originalWindowState = this.WindowState;
-        //    var originalWidth = this.Width;
-        //    var originalHeight = this.Height;
-
-        //    try
-        //    {
-        //        Mouse.OverrideCursor = Cursors.Wait;
-
-        //        // SOLUTION: Temporarily set fixed window size for consistent export
-        //        this.WindowState = WindowState.Normal;
-        //        this.Width = 1200;
-        //        this.Height = 900;
-        //        this.UpdateLayout();
-        //        await Task.Delay(100);
-
-        //        // Prepare export layout with FIXED dimensions
-        //        ExportLayout.Visibility = Visibility.Visible;
-        //        ExportLayout.Opacity = 1.0;
-        //        ExportLayout.IsHitTestVisible = true;
-
-        //        // FORCE FIXED DIMENSIONS regardless of parent
-        //        ExportLayout.Width = 950;
-        //        ExportLayout.Height = double.NaN; // Let height auto-calculate
-        //        ExportContent.Width = 900;
-        //        ExportContent.Height = double.NaN;
-
-        //        // Set up all content
-        //        ExportPatientId.Text = $"Patient ID: {patientId}";
-        //        ExportDate.Text = $"Report Generated: {DateTime.Now:MMMM dd, yyyy hh:mm tt}";
-
-        //        // Create chart image
-        //        var chartRenderSize = new System.Windows.Size(800, 400);
-        //        PatientProgressChart.Measure(chartRenderSize);
-        //        PatientProgressChart.Arrange(new Rect(chartRenderSize));
-        //        PatientProgressChart.UpdateLayout();
-
-        //        var chartBitmap = new RenderTargetBitmap(800, 400, 96, 96, PixelFormats.Pbgra32);
-        //        chartBitmap.Render(PatientProgressChart);
-        //        ExportChartImage.Source = chartBitmap;
-
-        //        // Set up data
-        //        var patientEntries = patientData[patientId].OrderBy(e => e.Date).ToList();
-        //        ExportScoreGrid.ItemsSource = null;
-        //        ExportScoreGrid.ItemsSource = patientEntries;
-
-        //        // Set up notes
-        //        var recentNotes = patientEntries
-        //            .Where(e => !string.IsNullOrWhiteSpace(e.Note))
-        //            .OrderByDescending(e => e.Date)
-        //            .Take(5)
-        //            .Select(e => $"{e.Date:yyyy-MM-dd}: {e.Note}")
-        //            .ToList();
-
-        //        ExportNoteText.Text = recentNotes.Any()
-        //            ? string.Join("\n\n", recentNotes)
-        //            : "No treatment notes available.";
-
-        //        // FORCE all child elements to remove height constraints
-        //        ExportScoreGrid.Height = double.NaN;
-        //        ExportScoreGrid.MaxHeight = double.PositiveInfinity;
-        //        ExportNoteText.Height = double.NaN;
-        //        ExportNoteText.MaxHeight = double.PositiveInfinity;
-
-        //        // Force layout update with FIXED width
-        //        ExportLayout.InvalidateVisual();
-        //        ExportLayout.InvalidateMeasure();
-        //        ExportLayout.InvalidateArrange();
-
-        //        // Measure with FIXED width, unlimited height
-        //        ExportLayout.Measure(new System.Windows.Size(950, double.PositiveInfinity));
-
-        //        // Use FIXED width and calculated height
-        //        var layoutWidth = 950;
-        //        var layoutHeight = ExportLayout.DesiredSize.Height;
-
-        //        // Arrange with calculated dimensions
-        //        ExportLayout.Arrange(new Rect(0, 0, layoutWidth, layoutHeight));
-        //        ExportLayout.UpdateLayout();
-
-        //        // Wait for rendering
-        //        await Task.Delay(500);
-
-        //        // Multiple dispatcher calls to ensure complete rendering
-        //        for (int i = 0; i < 3; i++)
-        //        {
-        //            Application.Current.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
-        //            await Task.Delay(100);
-        //        }
-
-        //        // Get final dimensions
-        //        var finalWidth = 950;  // FIXED width
-        //        var finalHeight = (int)Math.Ceiling(Math.Max(layoutHeight, 800));
-
-        //        // Debug info
-        //        System.Diagnostics.Debug.WriteLine($"Fixed export dimensions: {finalWidth} x {finalHeight}");
-        //        System.Diagnostics.Debug.WriteLine($"Layout actual: {ExportLayout.ActualWidth} x {ExportLayout.ActualHeight}");
-        //        System.Diagnostics.Debug.WriteLine($"Layout desired: {ExportLayout.DesiredSize.Width} x {ExportLayout.DesiredSize.Height}");
-        //        System.Diagnostics.Debug.WriteLine($"Window size during export: {this.Width} x {this.Height}");
-
-        //        // Create bitmap with FIXED dimensions
-        //        var exportBitmap = new RenderTargetBitmap(
-        //            finalWidth,
-        //            finalHeight,
-        //            96, 96,
-        //            PixelFormats.Pbgra32);
-
-        //        exportBitmap.Render(ExportLayout);
-
-        //        // Verify bitmap
-        //        if (exportBitmap.PixelWidth == 0 || exportBitmap.PixelHeight == 0)
-        //        {
-        //            MessageBox.Show("Error: Unable to generate export image. Please try again.",
-        //                           "Export Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-        //            return;
-        //        }
-
-        //        // Save file
-        //        var encoder = new PngBitmapEncoder();
-        //        encoder.Frames.Add(BitmapFrame.Create(exportBitmap));
-
-        //        var dialog = new Microsoft.Win32.SaveFileDialog
-        //        {
-        //            FileName = $"PatientReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmm}.png",
-        //            Filter = "PNG Image|*.png"
-        //        };
-
-        //        if (dialog.ShowDialog() == true)
-        //        {
-        //            using (var stream = File.Create(dialog.FileName))
-        //            {
-        //                encoder.Save(stream);
-        //            }
-
-        //            var fileInfo = new FileInfo(dialog.FileName);
-        //            MessageBox.Show($"Report exported successfully!\n\nFile: {dialog.FileName}\nSize: {finalWidth} x {finalHeight} pixels\nFile size: {fileInfo.Length / 1024:F1} KB\nMethod: Fixed Dimensions",
-        //                           "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        MessageBox.Show($"Export failed: {ex.Message}\n\nDetails: {ex.ToString()}",
-        //                       "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        //    }
-        //    finally
-        //    {
-        //        // Restore original window state
-        //        this.WindowState = originalWindowState;
-        //        this.Width = originalWidth;
-        //        this.Height = originalHeight;
-        //        this.UpdateLayout();
-
-        //        Mouse.OverrideCursor = null;
-        //        ExportLayout.Visibility = Visibility.Collapsed;
-        //    }
-        //}
-
-
-
-
-
-
-
-        //private void SaveBitmapAsPdf(BitmapSource bmp, string pdfPath)
-        //{
-        //    using var doc = new PdfSharp.Pdf.PdfDocument();
-        //    var page = doc.AddPage();
-        //    page.Width  = XUnit.FromPoint(bmp.PixelWidth * 72.0 / ReportDpi);
-        //    page.Height = XUnit.FromPoint(bmp.PixelHeight * 72.0 / ReportDpi);
-
-        //    using var gfx = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
-        //    using var ms = new MemoryStream();
-        //    var enc = new PngBitmapEncoder();
-        //    enc.Frames.Add(BitmapFrame.Create(bmp));
-        //    enc.Save(ms);
-        //    ms.Position = 0;
-
-        //    using var img = PdfSharp.Drawing.XImage.FromStream(ms);
-        //    gfx.DrawImage(img, 0, 0, page.Width, page.Height);
-
-        //    doc.Save(pdfPath);
-        //}
-
-
-
-
-
         // ─── : Edit/Delete Options ──────────────────────────────────────
-
-
-        private void ScoresGrid_MouseDoubleClick_1(object sender, MouseButtonEventArgs e)
+        private async void ScoresGrid_MouseDoubleClick_1(object sender, MouseButtonEventArgs e)
         {
             if (ScoresGrid.SelectedItem is ScoreEntry selected)
             {
-                // ADDED: Check permissions first
+                // Check permissions first
                 var canEdit = RoleHelper.CanEditData(currentUser);
                 var canDelete = RoleHelper.CanDeleteData(currentUser);
 
@@ -2792,21 +2467,7 @@ namespace PatientTrackerWPF
                     return;
                 }
 
-                // ADDED: Demo mode notification
-                if (isDemoMode)
-                {
-                    MessageBox.Show("Demo mode: Changes will not be permanently saved.",
-                                   "Demo Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-
-                // ADDED: Presentation mode notification for researchers
-                if (isPresentationMode && RoleHelper.IsResearcher(currentUser))
-                {
-                    MessageBox.Show("🎯 PRESENTATION MODE\n\nDemonstrating data modification interface for research presentations.",
-                                   "Presentation Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-
-                // MODIFIED: Show appropriate options based on permissions
+                // Show edit/delete options
                 string message = $"What would you like to do with this entry?\n\n" +
                                 $"Patient: {selected.PatientId}\n" +
                                 $"Date: {selected.Date:yyyy-MM-dd}\n" +
@@ -2820,101 +2481,166 @@ namespace PatientTrackerWPF
                 }
                 else if (canEdit)
                 {
-                    message += "Click 'Yes' to EDIT (Delete not available for your role)";
+                    message += "Click 'Yes' to EDIT";
                     buttons = MessageBoxButton.YesNo;
                 }
                 else if (canDelete)
                 {
-                    message += "Click 'Yes' to DELETE (Edit not available for your role)";
+                    message += "Click 'Yes' to DELETE";
                     buttons = MessageBoxButton.YesNo;
                 }
                 else
                 {
-                    // This shouldn't happen since we checked permissions above, but just in case
-                    message += "No modification permissions available.";
-                    MessageBox.Show(message, "View Entry", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
                 var result = MessageBox.Show(message, "Edit or Delete Entry", buttons, MessageBoxImage.Question);
 
-                if (result == MessageBoxResult.Yes)
+                if (result == MessageBoxResult.Yes && canEdit)
                 {
-                    if (canEdit)
-                    {
-                        // EDIT: Load into input fields - FIXED for null values
-                        PatientIdBox.Text = selected.PatientId;
-                        Phq9Box.Text = selected.PHQ9.HasValue ? selected.PHQ9.Value.ToString() : "";
-                        Gad7Box.Text = selected.GAD7.HasValue ? selected.GAD7.Value.ToString() : "";
-                        Bdi2Box.Text = selected.BDI2.HasValue ? selected.BDI2.Value.ToString() : "";
-                        PCL5Total.Text = selected.PCL5.HasValue ? selected.PCL5.Value.ToString() : "";
-                        YBOCS.Text = selected.YBOCS.HasValue ? selected.YBOCS.Value.ToString() : "";
-                        NoteBox.Text = selected.Note;
-                        DatePicker.SelectedDate = selected.Date;
+                    // SIMPLE EDIT MODE: Just set the flags and load data
+                    isInEditMode = true;
+                    editingEntry = selected;
 
-                        // Remove the entry so it can be re-added with updates
-                        patientData[selected.PatientId].Remove(selected);
-                        UpdateChartForPatient(selected.PatientId);
+                    // Load into input fields
+                    PatientIdBox.Text = selected.PatientId;
+                    Phq9Box.Text = selected.PHQ9?.ToString() ?? "";
+                    Gad7Box.Text = selected.GAD7?.ToString() ?? "";
+                    Bdi2Box.Text = selected.BDI2?.ToString() ?? "";
+                    PCL5Total.Text = selected.PCL5?.ToString() ?? "";
+                    YBOCS.Text = selected.YBOCS?.ToString() ?? "";
+                    NoteBox.Text = selected.Note ?? "";
+                    DatePicker.SelectedDate = selected.Date;
 
-                        string editMessage = "Entry loaded for editing. Make your changes and click 'Add Score' to update.";
-                        if (isPresentationMode && RoleHelper.IsResearcher(currentUser))
-                        {
-                            editMessage += "\n\n🎯 This demonstrates the editing interface for clinical staff.";
-                        }
-
-                        MessageBox.Show(editMessage, "Edit Mode", MessageBoxButton.OK, MessageBoxImage.Information);
-                    }
-                    else if (canDelete && !canEdit)
-                    {
-                        // DELETE: Only available if user can delete but not edit
-                        var confirmDelete = MessageBox.Show(
-                            "Are you sure you want to permanently delete this entry?",
-                            "Confirm Delete",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Warning);
-
-                        if (confirmDelete == MessageBoxResult.Yes)
-                        {
-                            patientData[selected.PatientId].Remove(selected);
-                            UpdateChartForPatient(selected.PatientId);
-                            MessageBox.Show("Entry deleted successfully.", "Deleted",
-                                           MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
-                    }
+                    MessageBox.Show("✅ Edit mode activated!\n\nMake your changes and click 'Add Score' to update.",
+                                   "Edit Mode", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                else if (result == MessageBoxResult.No && canDelete && canEdit)
+                else if ((result == MessageBoxResult.No && canEdit && canDelete) ||
+                         (result == MessageBoxResult.Yes && canDelete && !canEdit))
                 {
-                    // DELETE: Only when both edit and delete are available and user chose No (meaning delete)
-                    var confirmDelete = MessageBox.Show(
-                        "Are you sure you want to permanently delete this entry?",
-                        "Confirm Delete",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Warning);
+                    // DELETE
+                    await DeleteSingleEntryFromDatabase(selected);
+                }
+            }
+        }
 
-                    if (confirmDelete == MessageBoxResult.Yes)
+        // NEW METHOD for single entry deletion:
+        private async Task DeleteSingleEntryFromDatabase(ScoreEntry selected)
+        {
+            // CHECK IF THIS IS THE PATIENT'S ONLY ENTRY
+            var patientEntryCount = 0;
+            if (patientData.ContainsKey(selected.PatientId))
+            {
+                patientEntryCount = patientData[selected.PatientId].Count;
+            }
+
+            string warningMessage;
+            if (patientEntryCount <= 1)
+            {
+                warningMessage = $"⚠️ WARNING: This is the ONLY entry for this patient!\n\n" +
+                                $"Deleting this entry will remove the patient completely from the system.\n\n" +
+                                $"Patient: {selected.PatientId}\n" +
+                                $"Date: {selected.Date:yyyy-MM-dd}\n" +
+                                $"Scores: PHQ-9={selected.PHQ9}, GAD-7={selected.GAD7}, BDI-II={selected.BDI2}\n\n" +
+                                $"Are you sure you want to permanently delete this patient's only entry?";
+            }
+            else
+            {
+                warningMessage = $"Are you sure you want to permanently delete this entry?\n\n" +
+                                $"Patient: {selected.PatientId}\n" +
+                                $"Date: {selected.Date:yyyy-MM-dd}\n" +
+                                $"Scores: PHQ-9={selected.PHQ9}, GAD-7={selected.GAD7}, BDI-II={selected.BDI2}\n\n" +
+                                $"The patient will still have {patientEntryCount - 1} other entries remaining.";
+            }
+
+            var confirmDelete = MessageBox.Show(warningMessage, "Confirm Delete",
+                                               MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (confirmDelete == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    // DELETE FROM DATABASE
+                    using var context = new AppDbContext();
+                    var dbEntry = await context.ScoreEntries
+                        .FirstOrDefaultAsync(e => e.PatientId == selected.PatientId &&
+                                           e.Date.Date == selected.Date.Date);
+
+                    if (dbEntry != null)
                     {
-                        patientData[selected.PatientId].Remove(selected);
-                        UpdateChartForPatient(selected.PatientId);
+                        context.ScoreEntries.Remove(dbEntry);
+                        await context.SaveChangesAsync();
 
-                        string deleteMessage = "Entry deleted successfully.";
-                        if (isPresentationMode && RoleHelper.IsResearcher(currentUser))
+                        // Log the deletion
+                        await _auditService.LogActionAsync("DELETE_ENTRY", selected.PatientId,
+                            $"Deleted single entry for {selected.PatientId} on {selected.Date:yyyy-MM-dd}");
+
+                        // COMPREHENSIVE UI REFRESH
+                        if (patientEntryCount <= 1)
                         {
-                            deleteMessage += "\n\n🎯 This demonstrates data management capabilities.";
+                            // Patient has no more entries - remove completely
+                            patientData.Remove(selected.PatientId);
+                            PatientSelector.Items.Remove(selected.PatientId);
+                            PatientSelector.SelectedItem = null;
+                            ClearPatientDisplay();
+
+                            // Clear the patient ID box since patient is gone
+                            PatientIdBox.Clear();
+                        }
+                        else
+                        {
+                            // Patient still has other entries - refresh patient data
+                            await LoadPatientDataFromDatabase(selected.PatientId);
+                            UpdateChartForPatient(selected.PatientId);
+                        }
+
+                        // REFRESH THE FILTER GRID TOO
+                        if (!string.IsNullOrEmpty(filterId))
+                        {
+                            // Trigger filter refresh
+                            FilterBox_TextChanged(null, null);
+                        }
+                        else
+                        {
+                            // Refresh all data view
+                            await LoadAllPatientsFromDatabase();
+                            using var context2 = new AppDbContext();
+                            var allEntries = await context2.ScoreEntries
+                                .OrderBy(r => r.PatientId)
+                                .ThenBy(r => r.Date)
+                                .ToListAsync();
+                            ScoresGrid.ItemsSource = allEntries;
+                        }
+
+                        string deleteMessage = "✅ Entry deleted successfully from database!";
+                        if (patientEntryCount <= 1)
+                        {
+                            deleteMessage += "\n\n🗑️ Patient removed completely (no remaining entries).";
                         }
 
                         MessageBox.Show(deleteMessage, "Deleted",
                                        MessageBoxButton.OK, MessageBoxImage.Information);
                     }
+                    else
+                    {
+                        MessageBox.Show("Entry not found in database.", "Not Found",
+                                       MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
                 }
-                // Cancel = do nothing
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"❌ Error deleting entry from database: {ex.Message}", "Database Error",
+                                   MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
         private void ScoresGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-           
+
         }
     }
+
     public class ImportResult
     {
         public bool Success { get; set; } = false;
@@ -2924,6 +2650,4 @@ namespace PatientTrackerWPF
         public int SkippedCount { get; set; } = 0;
         public int PatientsAffected { get; set; } = 0;
     }
-
-
 }

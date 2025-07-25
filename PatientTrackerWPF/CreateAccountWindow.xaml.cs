@@ -1,4 +1,5 @@
-﻿using PatientTrackerWPF.Services;
+﻿using PatientTrackerWPF.Helper;
+using PatientTrackerWPF.Services;
 using System;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,11 +11,13 @@ namespace PatientTrackerWPF
     public partial class CreateAccountWindow : Window
     {
         private readonly AuthenticationService authService;
+    
 
         public CreateAccountWindow()
         {
             InitializeComponent();
             authService = App.GetService<AuthenticationService>();
+  
 
             // Set focus to username box
             Loaded += (s, e) => UsernameTextBox.Focus();
@@ -34,7 +37,13 @@ namespace PatientTrackerWPF
             RoleComboBox.Items.Add("Researcher");
             RoleComboBox.Items.Add("Admin");
             RoleComboBox.SelectedIndex = 0; // Default to "User"
+
         }
+  
+
+
+ 
+
 
         private async void CreateAccount_Click(object sender, RoutedEventArgs e)
         {
@@ -44,7 +53,14 @@ namespace PatientTrackerWPF
             var password = PasswordBox.Password;
             var confirmPassword = ConfirmPasswordBox.Password;
             var role = RoleComboBox.SelectedItem?.ToString() ?? "User";
+            var currentUser = authService?.CurrentUser;
 
+            if (!RoleHelper.IsAdmin(currentUser))
+            {
+                MessageBox.Show("⚠️ Access Denied\n\nOnly Administrators can create new user accounts.",
+                               "Admin Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             // Validation
             if (string.IsNullOrWhiteSpace(username))
             {
@@ -143,80 +159,80 @@ namespace PatientTrackerWPF
             }
         }
 
-        private void CreateDefaultAccounts_Click(object sender, RoutedEventArgs e)
-        {
-            var result = MessageBox.Show("This will create 3 default accounts:\n\n" +
-                                        "• admin / Admin123! (Administrator)\n" +
-                                        "• technician / Tech123! (Technician)\n" +
-                                        "• provider / Provider123! (Doctor)\n\n" +
-                                        "These passwords should be changed immediately after first login.\n\n" +
-                                        "Continue?",
-                                        "Create Default Accounts",
-                                        MessageBoxButton.YesNo,
-                                        MessageBoxImage.Question);
+        //private void CreateDefaultAccounts_Click(object sender, RoutedEventArgs e)
+        //{
+        //    var result = MessageBox.Show("This will create 3 default accounts:\n\n" +
+        //                                "• admin / Admin123! (Administrator)\n" +
+        //                                "• technician / Tech123! (Technician)\n" +
+        //                                "• provider / Provider123! (Doctor)\n\n" +
+        //                                "These passwords should be changed immediately after first login.\n\n" +
+        //                                "Continue?",
+        //                                "Create Default Accounts",
+        //                                MessageBoxButton.YesNo,
+        //                                MessageBoxImage.Question);
 
-            if (result == MessageBoxResult.Yes)
-            {
-                CreateDefaultAccountsAsync();
-            }
-        }
+        //    if (result == MessageBoxResult.Yes)
+        //    {
+        //        CreateDefaultAccountsAsync();
+        //    }
+        //}
 
-        private async void CreateDefaultAccountsAsync()
-        {
-            try
-            {
-                ShowLoading(true);
-                ShowStatus("Creating default accounts...", isError: false);
+        //private async void CreateDefaultAccountsAsync()
+        //{
+        //    try
+        //    {
+        //        ShowLoading(true);
+        //        ShowStatus("Creating default accounts...", isError: false);
 
-                var accounts = new[]
-                {
-                    new { Username = "admin", FullName = "System Administrator", Email = "admin@mentalhealth.clinic", Password = "Admin123!", Role = "Admin" },
-                    new { Username = "technician", FullName = "Clinical Technician", Email = "technician@mentalhealth.clinic", Password = "Tech123!", Role = "Technician" },
-                    new { Username = "provider", FullName = "Healthcare Provider", Email = "provider@mentalhealth.clinic", Password = "Provider123!", Role = "Doctor" }
-                };
+        //        var accounts = new[]
+        //        {
+        //            new { Username = "admin", FullName = "System Administrator", Email = "admin@mentalhealth.clinic", Password = "Admin123!", Role = "Admin" },
+        //            new { Username = "technician", FullName = "Clinical Technician", Email = "technician@mentalhealth.clinic", Password = "Tech123!", Role = "Technician" },
+        //            new { Username = "provider", FullName = "Healthcare Provider", Email = "provider@mentalhealth.clinic", Password = "Provider123!", Role = "Doctor" }
+        //        };
 
-                int successCount = 0;
-                string messages = "";
+        //        int successCount = 0;
+        //        string messages = "";
 
-                foreach (var account in accounts)
-                {
-                    var result = await authService.CreateUserAsync(
-                        account.Username,
-                        account.FullName,
-                        account.Email,
-                        account.Password,
-                        account.Role,
-                        "System-DefaultAccounts");
+        //        foreach (var account in accounts)
+        //        {
+        //            var result = await authService.CreateUserAsync(
+        //                account.Username,
+        //                account.FullName,
+        //                account.Email,
+        //                account.Password,
+        //                account.Role,
+        //                "System-DefaultAccounts");
 
-                    if (result.Success)
-                    {
-                        successCount++;
-                        messages += $"✓ Created: {account.Username} ({account.Role})\n";
-                    }
-                    else
-                    {
-                        messages += $"✗ Failed: {account.Username} - {result.Message}\n";
-                    }
-                }
+        //            if (result.Success)
+        //            {
+        //                successCount++;
+        //                messages += $"✓ Created: {account.Username} ({account.Role})\n";
+        //            }
+        //            else
+        //            {
+        //                messages += $"✗ Failed: {account.Username} - {result.Message}\n";
+        //            }
+        //        }
 
-                ShowStatus($"Default accounts creation completed. {successCount}/3 accounts created.",
-                          isError: successCount < 3);
+        //        ShowStatus($"Default accounts creation completed. {successCount}/3 accounts created.",
+        //                  isError: successCount < 3);
 
-                MessageBox.Show($"Default Accounts Creation Results:\n\n{messages}\n" +
-                               "Important: Please change these default passwords immediately after first login!",
-                               "Default Accounts Created",
-                               MessageBoxButton.OK,
-                               MessageBoxImage.Information);
-            }
-            catch (Exception ex)
-            {
-                ShowStatus($"Error creating default accounts: {ex.Message}", isError: true);
-            }
-            finally
-            {
-                ShowLoading(false);
-            }
-        }
+        //        MessageBox.Show($"Default Accounts Creation Results:\n\n{messages}\n" +
+        //                       "Important: Please change these default passwords immediately after first login!",
+        //                       "Default Accounts Created",
+        //                       MessageBoxButton.OK,
+        //                       MessageBoxImage.Information);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        ShowStatus($"Error creating default accounts: {ex.Message}", isError: true);
+        //    }
+        //    finally
+        //    {
+        //        ShowLoading(false);
+        //    }
+        //}
 
         private void Cancel_Click(object sender, RoutedEventArgs e)
         {
@@ -236,7 +252,7 @@ namespace PatientTrackerWPF
         {
             LoadingGrid.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
             CreateAccountBtn.IsEnabled = !isLoading;
-            CreateDefaultAccountsBtn.IsEnabled = !isLoading;
+            //CreateDefaultAccountsBtn.IsEnabled = !isLoading;
             UsernameTextBox.IsEnabled = !isLoading;
             FullNameTextBox.IsEnabled = !isLoading;
             EmailTextBox.IsEnabled = !isLoading;

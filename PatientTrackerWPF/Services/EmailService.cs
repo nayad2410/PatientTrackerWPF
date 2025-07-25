@@ -21,7 +21,13 @@ namespace PatientTrackerWPF.Services
         {
             var emailSettings = configuration.GetSection("EmailSettings");
             smtpServer = emailSettings["SmtpServer"];
-            smtpPort = int.Parse(emailSettings["SmtpPort"]);
+
+            var portString = emailSettings["SmtpPort"];
+            if (string.IsNullOrWhiteSpace(portString))
+                throw new Exception("Missing 'SmtpPort' configuration in EmailSettings.");
+
+            smtpPort = int.Parse(portString);
+
             enableSsl = bool.Parse(emailSettings["EnableSsl"]);
             emailUsername = emailSettings["Username"];
             emailPassword = emailSettings["Password"];
@@ -29,6 +35,7 @@ namespace PatientTrackerWPF.Services
             fromName = emailSettings["FromName"];
             resetLinkBaseUrl = emailSettings["ResetLinkBaseUrl"];
         }
+
         public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string resetToken, string fullName)
         {
             try
@@ -61,7 +68,7 @@ namespace PatientTrackerWPF.Services
             }
         }
 
-        public async Task<bool> SendAccountCreatedEmailAsync(string toEmail, string username, string fullName, string temporaryPassword = null)
+        public async Task<bool> SendAccountCreatedEmailAsync(string toEmail, string username, string fullName, string? temporaryPassword = null)
         {
             try
             {

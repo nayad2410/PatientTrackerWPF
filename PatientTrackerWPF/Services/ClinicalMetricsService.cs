@@ -53,11 +53,11 @@ namespace PatientTrackerWPF.Services
                 var mostRecent = entries.Last();
 
                 // Only include patients who started with BDI-II ≥ 14 (moderate depression or higher)
-                if (baseline.BDI2.Value < 14) continue; // FIXED: Use .Value
+                if (baseline.BDI2.Value <= 14) continue; // FIXED: Use .Value
 
                 var percentImprovement = ((double)(baseline.BDI2.Value - mostRecent.BDI2.Value) / baseline.BDI2.Value) * 100; // FIXED: Use .Value
                 var hasResponse = percentImprovement >= 50; // ≥50% improvement
-                var hasRemission = mostRecent.BDI2.Value < 14; // FIXED: Use .Value
+                var hasRemission = mostRecent.BDI2.Value <= 14; // FIXED: Use .Value
 
                 var outcome = new PatientOutcome
                 {
@@ -154,7 +154,7 @@ namespace PatientTrackerWPF.Services
                 MostRecentDate = mostRecent.Date,
                 PercentImprovement = percentImprovement,
                 HasResponse = percentImprovement >= 50,
-                HasRemission = mostRecent.BDI2.Value < 14, // FIXED: Use .Value
+                HasRemission = mostRecent.BDI2.Value <= 14, // FIXED: Use .Value
                 TotalAssessments = bdi2Entries.Count,
                 DaysBetweenAssessments = (mostRecent.Date - baseline.Date).Days
             };
