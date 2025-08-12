@@ -1,13 +1,19 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.Mail;
+using System.Net.Security;
+using System.Security.Authentication;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace PatientTrackerWPF.Services
 {
     public class EmailService
     {
+        private readonly ILogger<EmailService> _logger;
+
         private readonly string smtpServer;
         private readonly int smtpPort;
         private readonly bool enableSsl;
@@ -17,53 +23,48 @@ namespace PatientTrackerWPF.Services
         private readonly string fromName;
         private readonly string resetLinkBaseUrl;
 
-        public EmailService(IConfiguration configuration)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
+            _logger = logger;
+
             var emailSettings = configuration.GetSection("EmailSettings");
-            smtpServer = emailSettings["SmtpServer"];
 
-            var portString = emailSettings["SmtpPort"];
-            if (string.IsNullOrWhiteSpace(portString))
-                throw new Exception("Missing 'SmtpPort' configuration in EmailSettings.");
+            smtpServer = emailSettings["SmtpServer"] ?? throw new Exception("EmailSettings:SmtpServer missing");
+            smtpPort = int.TryParse(emailSettings["SmtpPort"], out var p) ? p : throw new Exception("EmailSettings:SmtpPort missing/invalid");
+            enableSsl = bool.TryParse(emailSettings["EnableSsl"], out var ssl) && ssl;
+            emailUsername = emailSettings["Username"] ?? throw new Exception("EmailSettings:Username missing");
+            emailPassword = emailSettings["Password"] ?? throw new Exception("EmailSettings:Password missing");
+            fromEmail = emailSettings["FromEmail"] ?? throw new Exception("EmailSettings:FromEmail missing");
+            fromName  = emailSettings["FromName"]  ?? "Reconnect Progress Tracker";
+            resetLinkBaseUrl = emailSettings["ResetLinkBaseUrl"] ?? "https://localhost/reset-password";
 
-            smtpPort = int.Parse(portString);
-
-            enableSsl = bool.Parse(emailSettings["EnableSsl"]);
-            emailUsername = emailSettings["Username"];
-            emailPassword = emailSettings["Password"];
-            fromEmail = emailSettings["FromEmail"];
-            fromName = emailSettings["FromName"];
-            resetLinkBaseUrl = emailSettings["ResetLinkBaseUrl"];
+            // For older runtimes: ensure TLS 1.2 (ignored on modern .NET)
+            try
+            {
+#pragma warning disable SYSLIB0039
+                System.Net.ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+#pragma warning restore SYSLIB0039
+            }
+            catch { /* ignore */ }
         }
 
         public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string resetToken, string fullName)
         {
             try
             {
-                var resetLink = $"https://your-domain.com/reset-password?token={resetToken}&email={Uri.EscapeDataString(toEmail)}";
+                // Build a usable link from your config base URL
+                // (URL-encode both token and email)
+                var link = $"{resetLinkBaseUrl}?token={HttpUtility.UrlEncode(resetToken)}&email={HttpUtility.UrlEncode(toEmail)}";
 
                 var subject = "Password Reset Request - Reconnect Progress Tracker";
-                var body = GeneratePasswordResetEmailBody(fullName, resetToken, resetLink);
+                var body = GeneratePasswordResetEmailBody(fullName, resetToken, link);
 
-                using var message = new MailMessage();
-                message.From = new MailAddress(fromEmail, fromName);
-                message.To.Add(new MailAddress(toEmail));
-                message.Subject = subject;
-                message.Body = body;
-                message.IsBodyHtml = true;
-
-                using var client = new SmtpClient(smtpServer, smtpPort);
-                client.EnableSsl = true;
-                client.UseDefaultCredentials = false;
-                client.Credentials = new NetworkCredential(emailUsername, emailPassword);
-
-                await client.SendMailAsync(message);
+                await SendAsync(toEmail, subject, body);
                 return true;
             }
             catch (Exception ex)
             {
-                // Log the error
-                System.Diagnostics.Debug.WriteLine($"Email sending failed: {ex.Message}");
+                _logger.LogError(ex, "EmailService: failed to send reset email to {Email}", toEmail);
                 return false;
             }
         }
@@ -73,28 +74,72 @@ namespace PatientTrackerWPF.Services
             try
             {
                 var subject = "Account Created - Reconnect Progress Tracker";
-                var body = GenerateAccountCreatedEmailBody(fullName, username, temporaryPassword);
+                var body = GenerateAccountCreatedEmailBody(fullName, username, temporaryPassword ?? "");
 
-                using var message = new MailMessage();
-                message.From = new MailAddress(fromEmail, fromName);
-                message.To.Add(new MailAddress(toEmail));
-                message.Subject = subject;
-                message.Body = body;
-                message.IsBodyHtml = true;
-
-                using var client = new SmtpClient(smtpServer, smtpPort);
-                client.EnableSsl = true;
-                client.UseDefaultCredentials = false;
-                client.Credentials = new NetworkCredential(emailUsername, emailPassword);
-
-                await client.SendMailAsync(message);
+                await SendAsync(toEmail, subject, body);
                 return true;
             }
             catch (Exception ex)
             {
-                // Log the error
-                System.Diagnostics.Debug.WriteLine($"Email sending failed: {ex.Message}");
+                _logger.LogError(ex, "EmailService: failed to send account-created email to {Email}", toEmail);
                 return false;
+            }
+        }
+
+        private async Task SendAsync(string toEmail, string subject, string htmlBody)
+        {
+            // O365 requirement: From should equal the authenticated user
+            var from = new MailAddress(fromEmail, fromName);
+            var to = new MailAddress(toEmail);
+
+            using var message = new MailMessage(from, to)
+            {
+                Subject = subject,
+                Body = htmlBody,
+                IsBodyHtml = true
+            };
+
+            using var client = new SmtpClient(smtpServer, smtpPort)
+            {
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
+                EnableSsl = enableSsl,              // true for 587 (STARTTLS) with Office 365
+                Credentials = new NetworkCredential(emailUsername, emailPassword),
+                Timeout = 30000                     // 30s
+            };
+
+            try
+            {
+                await client.SendMailAsync(message);
+                _logger.LogInformation("EmailService: sent \"{Subject}\" to {Email}", subject, toEmail);
+            }
+            catch (SmtpException smtpex)
+            {
+                _logger.LogError(smtpex,
+                    "SMTP failed (StatusCode={StatusCode}) sending to {Email}",
+                    smtpex.StatusCode,
+                    toEmail);
+
+                if (smtpex.InnerException != null)
+                {
+                    _logger.LogError("Inner exception: {InnerType} - {InnerMessage}",
+                        smtpex.InnerException.GetType().Name,
+                        smtpex.InnerException.Message);
+                }
+
+                // Optional: Also write to Debug output for quick viewing
+                System.Diagnostics.Debug.WriteLine(
+                    $"SMTP failed: {smtpex.StatusCode} {smtpex.Message}");
+                if (smtpex.InnerException != null)
+                    System.Diagnostics.Debug.WriteLine(
+                        $"Inner: {smtpex.InnerException.GetType().Name}: {smtpex.InnerException.Message}");
+
+                throw; // keep throwing if you want higher-level handlers to catch it
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SMTP failed sending to {Email}", toEmail);
+                throw;
             }
         }
 
@@ -104,112 +149,75 @@ namespace PatientTrackerWPF.Services
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #1e3a8a; color: white; padding: 20px; text-align: center; }}
-        .content {{ padding: 20px; background-color: #f9f9f9; }}
-        .token-box {{ background-color: #e3f2fd; padding: 15px; margin: 20px 0; border-left: 4px solid #2196f3; }}
-        .button {{ display: inline-block; padding: 12px 24px; background-color: #1e3a8a; color: white; text-decoration: none; border-radius: 5px; }}
-        .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
-    </style>
+  <meta charset='utf-8'/>
+  <style>
+    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+    .header {{ background-color: #1e3a8a; color: white; padding: 20px; text-align: center; }}
+    .content {{ padding: 20px; background-color: #f9f9f9; }}
+    .token-box {{ background-color: #e3f2fd; padding: 15px; margin: 20px 0; border-left: 4px solid #2196f3; }}
+    .button {{ display: inline-block; padding: 12px 24px; background-color: #1e3a8a; color: white; text-decoration: none; border-radius: 5px; }}
+    .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
+  </style>
 </head>
 <body>
-    <div class='container'>
-        <div class='header'>
-            <h1>Password Reset Request</h1>
-            <p>Reconnect Progress Tracker</p>
-        </div>
-        
-        <div class='content'>
-            <h2>Hello {fullName},</h2>
-            
-            <p>We received a request to reset your password for your Reconnect Progress Tracker account.</p>
-            
-            <div class='token-box'>
-                <strong>Reset Token:</strong> <code>{resetToken}</code>
-            </div>
-            
-            <p>To reset your password:</p>
-            <ol>
-                <li>Open the Reconnect Progress Tracker application</li>
-                <li>Click ""Forgot Password"" on the login screen</li>
-                <li>Enter your email address</li>
-                <li>Click ""Send Reset Email""</li>
-                <li>Enter the reset token above</li>
-                <li>Choose your new password</li>
-            </ol>
-            
-            <p><strong>Important:</strong> This reset token will expire in 24 hours for security reasons.</p>
-            
-            <p>If you didn't request this password reset, please ignore this email or contact your system administrator.</p>
-        </div>
-        
-        <div class='footer'>
-            <p>This is an automated message from Reconnect Progress Tracker.<br>
-            Please do not reply to this email.</p>
-        </div>
+  <div class='container'>
+    <div class='header'>
+      <h1>Password Reset Request</h1>
+      <p>Reconnect Progress Tracker</p>
     </div>
+    <div class='content'>
+      <h2>Hello {WebUtility.HtmlEncode(fullName)},</h2>
+      <p>We received a request to reset your password.</p>
+      <div class='token-box'>
+        <strong>Reset Token:</strong> <code>{WebUtility.HtmlEncode(resetToken)}</code>
+      </div>
+      <p>You can also click the button below to reset your password:</p>
+      <p><a class='button' href='{resetLink}'>Reset Password</a></p>
+      <p><strong>Important:</strong> This token expires in 24 hours.</p>
+    </div>
+    <div class='footer'>This is an automated message. Please do not reply.</div>
+  </div>
 </body>
 </html>";
         }
 
         private string GenerateAccountCreatedEmailBody(string fullName, string username, string temporaryPassword)
         {
-            var passwordSection = string.IsNullOrEmpty(temporaryPassword)
-                ? "<p>You have set your own password during registration.</p>"
+            var passwordSection = string.IsNullOrWhiteSpace(temporaryPassword)
+                ? "<p>You set your password during registration.</p>"
                 : $@"<div class='token-box'>
-                        <strong>Temporary Password:</strong> <code>{temporaryPassword}</code>
-                        <br><strong>Important:</strong> Please change this password immediately after your first login.
+                        <strong>Temporary Password:</strong> <code>{WebUtility.HtmlEncode(temporaryPassword)}</code>
+                        <br><strong>Important:</strong> Change this after your first login.
                      </div>";
 
             return $@"
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #16a085; color: white; padding: 20px; text-align: center; }}
-        .content {{ padding: 20px; background-color: #f9f9f9; }}
-        .token-box {{ background-color: #e8f5e8; padding: 15px; margin: 20px 0; border-left: 4px solid #16a085; }}
-        .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
-    </style>
+  <meta charset='utf-8'/>
+  <style>
+    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+    .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+    .header {{ background-color: #16a085; color: white; padding: 20px; text-align: center; }}
+    .content {{ padding: 20px; background-color: #f9f9f9; }}
+    .token-box {{ background-color: #e8f5e8; padding: 15px; margin: 20px 0; border-left: 4px solid #16a085; }}
+    .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
+  </style>
 </head>
 <body>
-    <div class='container'>
-        <div class='header'>
-            <h1>Welcome to Reconnect Progress Tracker</h1>
-            <p>Your Account Has Been Created</p>
-        </div>
-        
-        <div class='content'>
-            <h2>Hello {fullName},</h2>
-            
-            <p>Your account has been successfully created for the Reconnect Progress Tracker system.</p>
-            
-            <p><strong>Username:</strong> <code>{username}</code></p>
-            
-            {passwordSection}
-            
-            <p>You can now login to the application using your credentials.</p>
-            
-            <p><strong>Getting Started:</strong></p>
-            <ul>
-                <li>Open the Reconnect Progress Tracker application</li>
-                <li>Enter your username and password</li>
-                <li>Complete your profile information if needed</li>
-                <li>If using a temporary password, change it immediately</li>
-            </ul>
-            
-            <p>If you have any questions or need assistance, please contact your system administrator.</p>
-        </div>
-        
-        <div class='footer'>
-            <p>This is an automated message from Reconnect Progress Tracker.<br>
-            Please do not reply to this email.</p>
-        </div>
+  <div class='container'>
+    <div class='header'>
+      <h1>Welcome to Reconnect Progress Tracker</h1>
     </div>
+    <div class='content'>
+      <h2>Hello {WebUtility.HtmlEncode(fullName)},</h2>
+      <p>Your account has been created.</p>
+      <p><strong>Username:</strong> <code>{WebUtility.HtmlEncode(username)}</code></p>
+      {passwordSection}
+    </div>
+    <div class='footer'>This is an automated message. Please do not reply.</div>
+  </div>
 </body>
 </html>";
         }

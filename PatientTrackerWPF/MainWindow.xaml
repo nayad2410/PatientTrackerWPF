@@ -299,9 +299,9 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            <!-- Add this button in your MainWindow.xaml near the other admin buttons (after line ~155 where you have the admin controls) -->
+                           
 
-                            <!-- In the Admin Controls Group section, add this button: -->
+                           
                             <Button x:Name="UserManagementButton"
         Content="👥 Users"
         Width="85" Height="30"
@@ -489,16 +489,16 @@
 
                 <!-- 4: Collapsible Clinical Metrics -->
                 <Border Grid.Row="4" 
-                    BorderBrush="#2B5F75"
-                    BorderThickness="2"
-                    Background="#E6F3FF"
-                    Margin="0,0,0,10">
+        BorderBrush="#2B5F75"
+        BorderThickness="2"
+        Background="#E6F3FF"
+        Margin="0,0,0,10">
                     <StackPanel>
                         <!-- Toggle Header - Always Visible -->
                         <Border Background="#2B5F75" 
-                            Padding="8,5"
-                            Cursor="Hand"
-                            MouseLeftButtonUp="ToggleMetrics_Click">
+                Padding="8,5"
+                Cursor="Hand"
+                MouseLeftButtonUp="ToggleMetrics_Click">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -508,39 +508,41 @@
 
                                 <!-- Toggle Button -->
                                 <TextBlock x:Name="MetricsToggleIcon" 
-                                       Grid.Column="0"
-                                       Text="▶" 
-                                       FontSize="12" 
-                                       Foreground="White"
-                                       Margin="0,0,10,0"
-                                       VerticalAlignment="Center"/>
+                           Grid.Column="0"
+                           Text="▶" 
+                           FontSize="12" 
+                           Foreground="White"
+                           Margin="0,0,10,0"
+                           VerticalAlignment="Center"/>
 
-                                <!-- Title -->
+                                <!-- Updated Title -->
                                 <TextBlock Grid.Column="1"
-                                       Text="BDI-II Clinical Outcomes"
-                                       FontSize="14" FontWeight="Bold"
-                                       Foreground="White" 
-                                       VerticalAlignment="Center"/>
+                           Text="Clinical Outcomes Analysis"
+                           FontSize="14" FontWeight="Bold"
+                           Foreground="White" 
+                           VerticalAlignment="Center"/>
 
-                                <!-- Quick Stats when collapsed -->
+                                <!-- Updated Quick Stats when collapsed -->
                                 <StackPanel x:Name="QuickStats" 
-                                        Grid.Column="2" 
-                                        Orientation="Horizontal"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="Response: " FontSize="10" Foreground="LightGray"/>
-                                    <TextBlock x:Name="QuickResponseRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White" Margin="0,0,15,0"/>
-                                    <TextBlock Text="Remission: " FontSize="10" Foreground="LightGray"/>
-                                    <TextBlock x:Name="QuickRemissionRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                            Grid.Column="2" 
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                                    <TextBlock Text="PHQ-9 Response: " FontSize="10" Foreground="LightGray"/>
+                                    <TextBlock x:Name="QuickResponseRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White" Margin="0,0,15,0"
+                               ToolTip="Percentage of patients with ≥50% improvement in PHQ-9 scores"/>
+                                    <TextBlock Text="BDI-II Remission: " FontSize="10" Foreground="LightGray"/>
+                                    <TextBlock x:Name="QuickRemissionRate" Text="0.0%" FontSize="10" FontWeight="Bold" Foreground="White"
+                               ToolTip="Percentage of patients with most recent BDI-II score ≤14"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
                         <!-- Expandable Content -->
                         <StackPanel x:Name="MetricsContent" 
-                                Visibility="Collapsed"
-                                Margin="10">
+                    Visibility="Collapsed"
+                    Margin="10">
 
-                            <!-- Main Metrics Grid - Enhanced with more details -->
+                            <!-- Main Metrics Grid - Updated with clearer labels -->
                             <Grid Margin="0,0,0,15">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -554,95 +556,96 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- Response Rate -->
+                                <!-- PHQ-9 Response Rate -->
                                 <Border Grid.Row="0" Grid.Column="0" 
-                                    Background="White" 
-                                    BorderBrush="#DDD" 
-                                    BorderThickness="1" 
-                                    Padding="10" 
-                                    Margin="0,0,5,5"
-                                    CornerRadius="5">
+                        Background="White" 
+                        BorderBrush="#4682B4" 
+                        BorderThickness="2" 
+                        Padding="10" 
+                        Margin="0,0,5,5"
+                        CornerRadius="5">
                                     <StackPanel>
-                                        <TextBlock Text="Response Rate" FontWeight="Bold" FontSize="12"
-                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                                        <TextBlock Text="PHQ-9 Response Rate" FontWeight="Bold" FontSize="12"
+                                   HorizontalAlignment="Center" Foreground="#4682B4"/>
                                         <TextBlock Text="(≥50% improvement)" FontSize="9" 
-                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                   HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                             <TextBlock x:Name="ResponseRateText" Text="0.0%" FontSize="24" FontWeight="Bold"
-                                                   Foreground="Green" Margin="0,0,5,0"/>
+                                       Foreground="#4682B4" Margin="0,0,5,0"/>
                                             <TextBlock x:Name="ResponseCountText" Text="(0/0)" FontSize="10" Foreground="Gray"
-                                                   VerticalAlignment="Bottom" Margin="0,0,0,3"/>
+                                       VerticalAlignment="Bottom" Margin="0,0,0,3"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="ResponseDetails" Text="No eligible patients yet" 
-                                               FontSize="8" Foreground="Gray" 
-                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                        <TextBlock Text="Based on PHQ-9 scores" 
+                                   FontSize="8" Foreground="Gray" 
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Remission Rate -->
+                                <!-- BDI-II Remission Rate -->
                                 <Border Grid.Row="0" Grid.Column="1" 
-                                    Background="White" 
-                                    BorderBrush="#DDD" 
-                                    BorderThickness="1" 
-                                    Padding="10" 
-                                    Margin="0,0,5,5"
-                                    CornerRadius="5">
+                        Background="White" 
+                        BorderBrush="#8B4513" 
+                        BorderThickness="2" 
+                        Padding="10" 
+                        Margin="0,0,5,5"
+                        CornerRadius="5">
                                     <StackPanel>
-                                        <TextBlock Text="Remission Rate" FontWeight="Bold" FontSize="12"
-                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                                        <TextBlock Text="(score &lt;14)" FontSize="9" 
-                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                        <TextBlock Text="BDI-II Remission Rate" FontWeight="Bold" FontSize="12"
+                                   HorizontalAlignment="Center" Foreground="#8B4513"/>
+                                        <TextBlock Text="(most recent score ≤14)" FontSize="9" 
+                                   HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                             <TextBlock x:Name="RemissionRateText" Text="0.0%" FontSize="24" FontWeight="Bold"
-                                                   Foreground="Blue" Margin="0,0,5,0"/>
+                                       Foreground="#8B4513" Margin="0,0,5,0"/>
                                             <TextBlock x:Name="RemissionCountText" Text="(0/0)" FontSize="10" Foreground="Gray"
-                                                   VerticalAlignment="Bottom" Margin="0,0,0,3"/>
+                                       VerticalAlignment="Bottom" Margin="0,0,0,3"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="RemissionDetails" Text="Target: ≥50% remission rate" 
-                                               FontSize="8" Foreground="Gray" 
-                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                        <TextBlock Text="Based on BDI-II scores" 
+                                   FontSize="8" Foreground="Gray" 
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Average Improvement -->
+                                <!-- Average PHQ-9 Improvement -->
                                 <Border Grid.Row="0" Grid.Column="2" 
-                                    Background="White" 
-                                    BorderBrush="#DDD" 
-                                    BorderThickness="1" 
-                                    Padding="10" 
-                                    Margin="0,0,5,5"
-                                    CornerRadius="5">
+                        Background="White" 
+                        BorderBrush="#FF8C00" 
+                        BorderThickness="2" 
+                        Padding="10" 
+                        Margin="0,0,5,5"
+                        CornerRadius="5">
                                     <StackPanel>
-                                        <TextBlock Text="Average Improvement" FontWeight="Bold" FontSize="12"
-                                               HorizontalAlignment="Center" Foreground="#2B5F75"/>
-                                        <TextBlock Text="(all patients)" FontSize="9" 
-                                               HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
+                                        <TextBlock Text="Average PHQ-9 Improvement" FontWeight="Bold" FontSize="12"
+                                   HorizontalAlignment="Center" Foreground="#FF8C00"/>
+                                        <TextBlock Text="(baseline to recent)" FontSize="9" 
+                                   HorizontalAlignment="Center" Foreground="Gray" Margin="0,0,0,5"/>
                                         <TextBlock x:Name="AverageImprovementText" Text="0.0%" FontSize="24" FontWeight="Bold"
-                                               HorizontalAlignment="Center" Foreground="Orange"/>
-                                        <TextBlock x:Name="ImprovementDetails" Text="Baseline to latest" 
-                                               FontSize="8" Foreground="Gray" 
-                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                   HorizontalAlignment="Center" Foreground="#FF8C00"/>
+                                        <TextBlock Text="All eligible patients" 
+                                   FontSize="8" Foreground="Gray" 
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Control Buttons -->
                                 <StackPanel Grid.Row="0" Grid.Column="3" 
-                                        VerticalAlignment="Center" 
-                                        Margin="10,0,0,0">
-                                    <Button Content="Calculate Metrics" Click="CalculateMetrics_Click"
-                                        Width="120" Height="30" Margin="0,0,0,5"
-                                        Background="#2B5F75" Foreground="White" FontWeight="Bold" 
-                                        BorderThickness="0" Cursor="Hand" FontSize="10">
+                            VerticalAlignment="Center" 
+                            Margin="10,0,0,0">
+                                    <Button Content="↻ Refresh Outcomes" Click="CalculateMetrics_Click"
+                                             ToolTip="Manually refresh clinical outcomes (auto-calculates on patient selection)"
+                            Width="120" Height="30" Margin="0,0,0,5"
+                            Background="#2B5F75" Foreground="White" FontWeight="Bold" 
+                            BorderThickness="0" Cursor="Hand" FontSize="10">
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="5"
-                                                                Padding="8">
+                                                    CornerRadius="5"
+                                                    Padding="8">
                                                                 <ContentPresenter HorizontalAlignment="Center"
-                                                                              VerticalAlignment="Center"/>
+                                                                  VerticalAlignment="Center"/>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsMouseOver" Value="True">
@@ -656,19 +659,19 @@
                                         </Button.Style>
                                     </Button>
                                     <Button Content="Export Report" Click="ExportMetricsReport_Click"
-                                        Width="120" Height="30"
-                                        Background="DarkGreen" Foreground="White" FontWeight="Bold" 
-                                        BorderThickness="0" Cursor="Hand" FontSize="10">
+                            Width="120" Height="30"
+                            Background="DarkGreen" Foreground="White" FontWeight="Bold" 
+                            BorderThickness="0" Cursor="Hand" FontSize="10">
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
                                                             <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="5"
-                                                                Padding="8">
+                                                    CornerRadius="5"
+                                                    Padding="8">
                                                                 <ContentPresenter HorizontalAlignment="Center"
-                                                                              VerticalAlignment="Center"/>
+                                                                  VerticalAlignment="Center"/>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
                                                                 <Trigger Property="IsMouseOver" Value="True">
@@ -683,67 +686,79 @@
                                     </Button>
                                 </StackPanel>
 
-                                <!-- Secondary Metrics Row -->
-                                <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                                    Background="White" 
-                                    BorderBrush="#DDD" 
-                                    BorderThickness="1" 
-                                    Padding="10" 
-                                    Margin="0,0,5,5"
-                                    CornerRadius="5">
-                                    <StackPanel>
-                                        <TextBlock Text="Eligible Patients" FontWeight="Bold" FontSize="12"
-                                               HorizontalAlignment="Center" Foreground="#2B5F75" Margin="0,0,0,5"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Total Eligible" FontSize="10" Foreground="Gray" HorizontalAlignment="Center"/>
-                                                <TextBlock x:Name="EligiblePatientsText" Text="0" FontSize="18" FontWeight="Bold"
-                                                       HorizontalAlignment="Center" Foreground="Purple"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="Criteria" FontSize="10" Foreground="Gray" HorizontalAlignment="Center"/>
-                                                <TextBlock Text="≥14 baseline, 2+ assessments" FontSize="8" 
-                                                       HorizontalAlignment="Center" Foreground="Gray" TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </StackPanel>
-                                </Border>
+                                <!-- Eligible Patients Summary - Updated to show separate PHQ-9 and BDI-II counts -->
+                                <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+        Background="White" 
+        BorderBrush="#2B5F75" 
+        BorderThickness="1" 
+        Padding="15" 
+        Margin="0,0,5,5"
+        CornerRadius="5">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
 
-                                <!-- Treatment Duration Analysis -->
-                                <Border Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
-                                    Background="White" 
-                                    BorderBrush="#DDD" 
-                                    BorderThickness="1" 
-                                    Padding="10" 
-                                    Margin="0,0,0,5"
-                                    CornerRadius="5">
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="PHQ-9 Eligible Patients" FontWeight="Bold" FontSize="11"
+                       HorizontalAlignment="Center" Foreground="#4682B4" Margin="0,0,0,5"/>
+                                            <TextBlock x:Name="PHQ9EligibleText" Text="0" FontSize="20" FontWeight="Bold"
+                       HorizontalAlignment="Center" Foreground="#4682B4"/>
+                                            <TextBlock Text="≥2 PHQ-9 assessments" FontSize="8" 
+                       HorizontalAlignment="Center" Foreground="Gray"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="BDI-II Eligible Patients" FontWeight="Bold" FontSize="11"
+                       HorizontalAlignment="Center" Foreground="#8B4513" Margin="0,0,0,5"/>
+                                            <TextBlock x:Name="BDI2EligibleText" Text="0" FontSize="20" FontWeight="Bold"
+                       HorizontalAlignment="Center" Foreground="#8B4513"/>
+                                            <TextBlock Text="≥2 BDI-II assessments" FontSize="8" 
+                       HorizontalAlignment="Center" Foreground="Gray"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Total Patients" FontWeight="Bold" FontSize="11"
+                       HorizontalAlignment="Center" Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                            <!-- FIXED: Changed name from EligiblePatientsText to TotalEligibleText -->
+                                            <TextBlock x:Name="TotalEligibleText" Text="0" FontSize="20" FontWeight="Bold"
+                       HorizontalAlignment="Center" Foreground="#2B5F75"/>
+                                            <TextBlock Text="With multiple assessments" FontSize="8" 
+                       HorizontalAlignment="Center" Foreground="Gray"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+            
+                                <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4"
+        Background="#F0F8FF" BorderBrush="#2B5F75" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,5,0,10">
                                     <StackPanel>
-                                        <TextBlock Text="Treatment Duration Analysis" FontWeight="Bold" FontSize="12"
-                                               HorizontalAlignment="Center" Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                        <TextBlock Text="CLINICAL OUTCOME DEFINITIONS" FontWeight="Bold" FontSize="12" Foreground="#2B5F75" Margin="0,0,0,8"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Avg Duration" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
-                                                <TextBlock x:Name="AvgDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
-                                                       HorizontalAlignment="Center" Foreground="DarkBlue"/>
+
+                                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                                <TextBlock Text="• PHQ-9 Response:" FontWeight="Bold" FontSize="10" Foreground="#4682B4"/>
+                                                <TextBlock Text="  ≥50% improvement in PHQ-9 score from baseline to most recent assessment" 
+                           FontSize="10" Margin="0,0,0,5" TextWrapping="Wrap"/>
+
+                                                <TextBlock Text="• Average Improvement:" FontWeight="Bold" FontSize="10" Foreground="#FF8C00"/>
+                                                <TextBlock Text="  Mean percentage improvement across all patients with PHQ-9 data" 
+                           FontSize="10" TextWrapping="Wrap"/>
                                             </StackPanel>
+
                                             <StackPanel Grid.Column="1">
-                                                <TextBlock Text="Shortest" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
-                                                <TextBlock x:Name="ShortestDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
-                                                       HorizontalAlignment="Center" Foreground="DarkGreen"/>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Longest" FontSize="9" Foreground="Gray" HorizontalAlignment="Center"/>
-                                                <TextBlock x:Name="LongestDurationText" Text="0 days" FontSize="11" FontWeight="Bold"
-                                                       HorizontalAlignment="Center" Foreground="DarkRed"/>
+                                                <TextBlock Text="• BDI-II Remission:" FontWeight="Bold" FontSize="10" Foreground="#8B4513"/>
+                                                <TextBlock Text="  Most recent BDI-II score ≤14 (regardless of improvement percentage)" 
+                           FontSize="10" Margin="0,0,0,5" TextWrapping="Wrap"/>
+
+                                                <TextBlock Text="• Eligibility:" FontWeight="Bold" FontSize="10" Foreground="#2B5F75"/>
+                                                <TextBlock Text="  Patients need ≥2 assessments for the respective measurement scale" 
+                           FontSize="10" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Grid>
                                     </StackPanel>
@@ -752,16 +767,16 @@
 
                             <!-- Current Patient Outcome Section - Enhanced -->
                             <Border BorderBrush="#2B5F75"
-                                BorderThickness="2"
-                                Background="White"
-                                Padding="15"
-                                CornerRadius="5">
+                    BorderThickness="2"
+                    Background="White"
+                    Padding="15"
+                    CornerRadius="5">
                                 <StackPanel x:Name="CurrentPatientOutcome">
-                                    <TextBlock Text="Current Patient Analysis" 
-                                           FontWeight="Bold" FontSize="14"
-                                           Foreground="#2B5F75"
-                                           HorizontalAlignment="Center"
-                                           Margin="0,0,0,10"/>
+                                    <TextBlock Text="Selected Patient Analysis" 
+                               FontWeight="Bold" FontSize="14"
+                               Foreground="#2B5F75"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,10"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -769,24 +784,26 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                             <TextBlock x:Name="CurrentPatientOutcomeTitle"
-                                                   FontWeight="Bold"
-                                                   Foreground="#2B5F75"
-                                                   FontSize="12"
-                                                   Margin="0,0,0,5"/>
+                                       Text="No patient selected"
+                                       FontWeight="Bold"
+                                       Foreground="#2B5F75"
+                                       FontSize="12"
+                                       Margin="0,0,0,5"/>
                                             <TextBlock x:Name="CurrentPatientOutcomeDetails"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   LineHeight="16"/>
+                                       Text="Select a patient from the dropdown to view their clinical outcomes analysis."
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       LineHeight="16"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                            <TextBlock Text="Progress Summary" FontWeight="Bold" FontSize="12"
-                                                   Foreground="#2B5F75" Margin="0,0,0,5"/>
+                                            <TextBlock Text="Clinical Progress Summary" FontWeight="Bold" FontSize="12"
+                                       Foreground="#2B5F75" Margin="0,0,0,5"/>
                                             <TextBlock x:Name="CurrentPatientProgressSummary"
-                                                   Text="Select a patient to view detailed progress analysis"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   Foreground="Gray"
-                                                   LineHeight="16"/>
+                                       Text="Patient-specific response and remission status will appear here when a patient is selected."
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Foreground="Gray"
+                                       LineHeight="16"/>
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>

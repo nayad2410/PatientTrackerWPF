@@ -17,7 +17,7 @@ namespace PatientTrackerWPF
             // Handle DateTime conversion
             if (value is DateTime dateTime)
             {
-                return dateTime.ToLocalDisplayString();
+                return dateTime.ToString("yyyy-MM-dd");
             }
 
         

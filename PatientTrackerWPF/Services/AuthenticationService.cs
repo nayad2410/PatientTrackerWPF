@@ -159,40 +159,73 @@ namespace PatientTrackerWPF.Services
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine($"PWRESET: start for {email}");
+
                 using var context = new AppDbContext();
                 var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email && u.IsActive);
 
                 if (user == null)
+                {
+                    System.Diagnostics.Debug.WriteLine("PWRESET: user not found");
                     return new AuthResult { Success = false, Message = "No account found with that email address." };
+                }
 
                 user.PasswordResetToken = GenerateResetToken();
                 user.PasswordResetExpires = DateTime.UtcNow.AddHours(24);
+                System.Diagnostics.Debug.WriteLine($"PWRESET: token generated (len={user.PasswordResetToken?.Length})");
 
                 await context.SaveChangesAsync();
+                System.Diagnostics.Debug.WriteLine("PWRESET: token saved to DB");
 
-                bool emailSent = await _emailService.SendPasswordResetEmailAsync(user.Email, user.PasswordResetToken, user.FullName);
-
-                if (!emailSent)
+                // Send email with detailed SMTP diagnostics
+                try
                 {
+                    bool emailSent = await _emailService
+                        .SendPasswordResetEmailAsync(user.Email, user.PasswordResetToken, user.FullName);
+
+                    if (!emailSent)
+                    {
+                        System.Diagnostics.Debug.WriteLine("PWRESET: email service returned false");
+                        return new AuthResult
+                        {
+                            Success = false,
+                            Message = "Reset token generated but email failed to send."
+                        };
+                    }
+                }
+                catch (System.Net.Mail.SmtpException ex)
+                {
+                    // surfaces codes like 5.7.57 (SMTP AUTH disabled) or 5.5.1 (bad creds)
+                    System.Diagnostics.Debug.WriteLine($"PWRESET: SMTP failed: {ex.StatusCode} {ex.Message}");
+                    if (ex.InnerException != null)
+                        System.Diagnostics.Debug.WriteLine($"PWRESET: Inner: {ex.InnerException.Message}");
+
                     return new AuthResult
                     {
                         Success = false,
-                        Message = "Reset token generated but email failed to send."
+                        Message = $"Reset token generated but email failed to send: {ex.StatusCode} {ex.Message}"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"PWRESET: email send threw: {ex}");
+                    return new AuthResult
+                    {
+                        Success = false,
+                        Message = $"Reset token generated but email failed to send: {ex.Message}"
                     };
                 }
 
-                return new AuthResult
-                {
-                    Success = true,
-                    Message = "Password reset email sent successfully."
-                };
-
+                System.Diagnostics.Debug.WriteLine("PWRESET: email sent OK");
+                return new AuthResult { Success = true, Message = "Password reset email sent successfully." };
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"PWRESET: unexpected error: {ex}");
                 return new AuthResult { Success = false, Message = $"Error initiating password reset: {ex.Message}" };
             }
         }
+
 
         public async Task<AuthResult> ChangePasswordWithTokenAsync(string email, string resetToken, string newPassword)
         {

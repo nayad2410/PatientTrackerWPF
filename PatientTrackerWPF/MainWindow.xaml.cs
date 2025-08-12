@@ -609,6 +609,18 @@ namespace PatientTrackerWPF
                 string action = isInEditMode ? "UPDATE_SCORE" : "CREATE_SCORE";
                 await _auditService.LogActionAsync(action, id, $"Saved scores for patient {id}");
 
+                // At the very end, after successful save:
+                if (changeCount > 0)  // If data was saved successfully
+                {
+                    lastDataModification = DateTime.Now;  // Mark data as changed
+
+                    // Auto-recalculate if this patient is currently selected
+                    if (PatientSelector.SelectedItem?.ToString() == id)
+                    {
+                        await RecalculateAndRefreshAsync(id);
+                    }
+                }
+
                 // Reset edit mode if we were editing
                 if (isInEditMode)
                 {
@@ -1117,9 +1129,28 @@ namespace PatientTrackerWPF
         [SupportedOSPlatform("windows")]
         private DrawingBitmap CreateProfessionalClinicalReport(string patientId, List<ScoreEntry> entries)
         {
-            // Report dimensions
+            // Calculate dynamic height based on actual data
+            int baseHeight = 800;  // Base height for header, chart, etc.
+            int rowHeight = 22;
+            int noteLineHeight = 40;  // Estimated height per note entry
+            int tableRows = entries.Count;  // ALL entries, not limited
+            int notesCount = entries.Count(e => !string.IsNullOrWhiteSpace(e.Note));
+
+            // Calculate total height needed
+            int tableHeight = tableRows * rowHeight + 100;  // +100 for headers
+            int notesHeight = notesCount * noteLineHeight + 100;  // +100 for section header
+            int totalHeight = baseHeight + tableHeight + notesHeight + 200;  // +200 for footer and padding
+
+            // Report dimensions - width stays same, height is dynamic
             const int width = 1200;
-            const int height = 1600;
+            int height = Math.Max(1600, totalHeight);  // Minimum 1600, but can grow
+
+            const int marginLeft = 50;
+            const int sectionSpacing = 30;
+            const int headerHeight = 65;
+            const int headerBackgroundHeight = 100;
+            const int headerBottomMargin = 20;
+            const double tableWidthRatio = 0.75;
 
             var bitmap = new DrawingBitmap(width, height);
             using var g = DrawingGraphics.FromImage(bitmap);
@@ -1131,12 +1162,17 @@ namespace PatientTrackerWPF
             // Background
             g.Clear(DrawingColor.White);
 
-            // Fonts
-            var titleFont = new DrawingFont("Arial", 18, DrawingFontStyle.Bold);
+            // Fonts - adjusted sizes for better fit
+            var titleFont = new DrawingFont("Arial", 14, DrawingFontStyle.Bold);
+            var subtitleFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
             var headerFont = new DrawingFont("Arial", 14, DrawingFontStyle.Bold);
             var subHeaderFont = new DrawingFont("Arial", 11, DrawingFontStyle.Bold);
-            var bodyFont = new DrawingFont("Arial", 9);
+            var bodyFont = new DrawingFont("Arial", 10);
             var smallFont = new DrawingFont("Arial", 8);
+            var cellFont = new DrawingFont("Arial", 8.5f);
+            var tableHeaderFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
+            var noteDateFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
+            var noteTextFont = new DrawingFont("Arial", 9);
 
             // Colors
             var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
@@ -1151,128 +1187,341 @@ namespace PatientTrackerWPF
             using (var headerRect = new SolidBrush(lightBlue))
             {
                 // Header background
-                g.FillRectangle(headerRect, 0, 0, width, 120);
-                g.FillRectangle(headerBrush, 0, 0, width, 80);
+                g.FillRectangle(headerRect, 0, 0, width, headerBackgroundHeight);
+                g.FillRectangle(headerBrush, 0, 0, width, headerHeight);
 
-                // Reconnect logo area
-                g.DrawString("RECONNECT", titleFont, DrawingBrushes.White, 45, 20);
-                g.DrawString("MENTAL HEALTH", new DrawingFont("Arial", 10), DrawingBrushes.LightGray, 50, 45);
+                const string brandText = "RECONNECT";
+                const int brandX = marginLeft - 5;
+                const int brandY = 15;
+
+                g.DrawString(brandText, titleFont, DrawingBrushes.White, brandX, brandY);
+
+                var brandWidth = g.MeasureString(brandText, titleFont).Width;
+                g.DrawString(" MENTAL HEALTH", subtitleFont, DrawingBrushes.LightGray,
+                            brandX + brandWidth, brandY + 2);
 
                 // Report title
-                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 400, 20);
-                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 400, 50);
+                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 400, 15);
+                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 400, 40);
             }
 
-            currentY = 140;
+            currentY = headerBackgroundHeight + headerBottomMargin;
 
             // PATIENT INFO SECTION
-            g.DrawString($"Patient ID: {patientId}", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            g.DrawString($"Patient ID: {patientId}", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
+            currentY += 30;
+            g.DrawString($"Report Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}", bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
             currentY += 25;
-            g.DrawString($"Report Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}", bodyFont, new SolidBrush(darkGray), 50, currentY);
-            currentY += 20; 
-            g.DrawString($"Assessment Period: {entries.First().Date:MMM dd, yyyy} to {entries.Last().Date:MMM dd, yyyy}",
-                        bodyFont, new SolidBrush(darkGray), 50, currentY);
-            currentY += 40;
+            g.DrawString($"Assessment Period: {entries.First().Date:yyyy-MM-dd} to {entries.Last().Date:yyyy-MM-dd}",
+                        bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
+            currentY += 20;
+            g.DrawString($"Total Assessments: {entries.Count}", bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
+            currentY += sectionSpacing + 10;
 
-            // DATA TABLE SECTION
-            g.DrawString("Assessment Scores Over Time", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
+            // DATA TABLE SECTION - NOW SHOWS ALL DATA
+            g.DrawString($"Complete Assessment History ({entries.Count} records)", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
             currentY += 30;
 
-            // Create data table
-            var tableY = CreateDataTable(g, entries, 50, currentY, width - 100);
-            currentY = tableY + 30;
+            // Create table showing ALL entries
+            var tableWidth = (int)((width - 100) * tableWidthRatio);
+            var tableY = CreateCompleteDataTable(g, entries, marginLeft, currentY, tableWidth, cellFont, tableHeaderFont, rowHeight);
+            currentY = tableY + 35;
 
             // PROGRESS CHART SECTION
-            g.DrawString($"Progress Track: {entries.First().Date:MMM dd/yy} to {entries.Last().Date:MMM dd/yy}",
-                        headerFont, new SolidBrush(reconnectBlue), 50, currentY);
-            currentY += 30;
+            g.DrawString($"Progress Track: {entries.First().Date:yyyy-MM-dd} to {entries.Last().Date:yyyy-MM-dd}",
+                        headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
+            currentY += 25;
 
-            // Create progress chart
-            var chartHeight = CreateProgressChart(g, entries, 50, currentY, width - 100, 400);
-            currentY += chartHeight + 30;
+            // Create progress chart with legend at bottom
+            currentY = CreateProgressChart(g, entries, marginLeft, currentY, width - 100, 400);
+            currentY += 20;
 
-            // TREATMENT NOTES SECTION
-            g.DrawString("Recent Treatment Notes", headerFont, new SolidBrush(reconnectBlue), 50, currentY);
-            currentY += 30;
+            // TREATMENT NOTES SECTION - NOW SHOWS ALL NOTES
+            g.DrawString($"Complete Treatment Notes History", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
+            currentY += 25;
 
-            var recentNotes = entries
+            var allNotes = entries
                 .Where(e => !string.IsNullOrWhiteSpace(e.Note))
-                .OrderByDescending(e => e.Date)
-                .Take(5)
+                .OrderBy(e => e.Date)  // Changed to chronological order
                 .ToList();
 
-            if (recentNotes.Any())
+            if (allNotes.Any())
             {
-                foreach (var entry in recentNotes)
+                g.DrawString($"Total notes: {allNotes.Count}", smallFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
+                currentY += 20;
+
+                var spaceWidth = g.MeasureString(" ", noteTextFont).Width;
+
+                foreach (var entry in allNotes)
                 {
-                    g.DrawString($"• {entry.Date:yyyy-MM-dd}: {entry.Note}", bodyFont, new SolidBrush(darkGray),
-                                70, currentY);
-                    currentY += 20;
+                    // Check if we're getting close to the bottom - extend if needed
+                    if (currentY > height - 100)
+                    {
+                        // We've run out of space - this shouldn't happen with dynamic height
+                        // but just in case, break here
+                        g.DrawString($"... and {allNotes.Count - allNotes.IndexOf(entry)} more notes",
+                                    noteTextFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
+                        break;
+                    }
+
+                    // Date header
+                    g.DrawString($"• {entry.Date:yyyy-MM-dd}:", noteDateFont,
+                                new SolidBrush(reconnectBlue), marginLeft + 20, currentY);
+                    currentY += 16;
+
+                    // Wrapped note text
+                    var noteText = entry.Note;
+                    var maxWidth = width - 140;
+                    var wrappedText = WrapTextOptimized(noteText, noteTextFont, maxWidth, g, spaceWidth);
+
+                    foreach (var line in wrappedText)
+                    {
+                        g.DrawString($"  {line}", noteTextFont, new SolidBrush(darkGray), marginLeft + 40, currentY);
+                        currentY += 18;
+                    }
+                    currentY += 5; // Space between notes
                 }
             }
             else
             {
-                g.DrawString("No treatment notes available.", bodyFont, new SolidBrush(darkGray), 70, currentY);
+                g.DrawString("No treatment notes available.", noteTextFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
+                currentY += 20;
             }
 
-            // FOOTER
-            currentY = height - 60;
+            // FOOTER - Position at bottom of actual content, not fixed position
+            currentY += 40;  // Add some space before footer
             using (var footerBrush = new SolidBrush(lightGray))
             {
                 g.FillRectangle(footerBrush, 0, currentY - 10, width, 70);
                 g.DrawString("This report is generated by Reconnect Mental Health Assessment System",
-                            smallFont, new SolidBrush(darkGray), 50, currentY + 10);
+                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 10);
                 g.DrawString($"Report ID: RPT-{patientId}-{DateTime.Now:yyyyMMddHHmm}",
-                            smallFont, new SolidBrush(darkGray), 50, currentY + 25);
+                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 25);
+                g.DrawString($"Page contains {entries.Count} assessment records and {allNotes.Count} clinical notes",
+                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 40);
             }
 
-            // Cleanup fonts
+            // Cleanup all fonts
             titleFont.Dispose();
+            subtitleFont.Dispose();
             headerFont.Dispose();
             subHeaderFont.Dispose();
             bodyFont.Dispose();
             smallFont.Dispose();
+            cellFont.Dispose();
+            tableHeaderFont.Dispose();
+            noteDateFont.Dispose();
+            noteTextFont.Dispose();
 
             return bitmap;
         }
 
-        private int CreateDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth)
+        // New method to create table with ALL data
+        private int CreateCompleteDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth,
+                                      DrawingFont cellFont, DrawingFont headerFont, int rowHeight)
         {
-            var cellFont = new DrawingFont("Arial", 9);
-            var headerFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
             var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
             var lightGray = DrawingColor.FromArgb(240, 240, 240);
+            var subtleGray = DrawingColor.FromArgb(220, 220, 220);
 
-            // Take up to 10 most recent entries for the table
-            var tableEntries = entries.TakeLast(10).ToList();
+            // Show ALL entries, not limited
+            var tableEntries = entries.OrderBy(e => e.Date).ToList();  // Chronological order
 
-            // Column setup
+            // Column setup with proper width distribution
             var columns = new[] { "Date", "PHQ-9", "GAD-7", "BDI-II", "PCL-5", "Y-BOCS" };
-            var colWidth = tableWidth / columns.Length;
-            var rowHeight = 25;
+            var baseColWidth = tableWidth / columns.Length;
+            var remainder = tableWidth % columns.Length;
 
+            var headerRowHeight = rowHeight + 4;
             var currentY = y;
+
+            // Create reusable brushes and pens outside the loop
+            using var altRowBrush = new SolidBrush(lightGray);
+            using var separatorPen = new System.Drawing.Pen(subtleGray, 1);
+            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
+            using var whitePen = new System.Drawing.Pen(DrawingColor.White, 1);
+            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
+            using var blackBrush = new SolidBrush(DrawingColor.Black);
 
             // Draw header
             using (var headerBrush = new SolidBrush(reconnectBlue))
             {
-                g.FillRectangle(headerBrush, x, currentY, tableWidth, rowHeight);
+                g.FillRectangle(headerBrush, x, currentY, tableWidth, headerRowHeight);
 
+                var currentX = x;
                 for (int i = 0; i < columns.Length; i++)
                 {
-                    var cellX = x + (i * colWidth);
-                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
-                                cellX + 10, currentY + 5);
+                    var colWidth = baseColWidth + (i == columns.Length - 1 ? remainder : 0);
 
-                    // Draw column separator
+                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
+                                currentX + 8, currentY + 6);
+
                     if (i < columns.Length - 1)
                     {
-                        g.DrawLine(DrawingPens.White, cellX + colWidth, currentY,
-                                  cellX + colWidth, currentY + rowHeight);
+                        g.DrawLine(whitePen, currentX + colWidth, currentY,
+                                  currentX + colWidth, currentY + headerRowHeight);
+                    }
+
+                    currentX += colWidth;
+                }
+            }
+            currentY += headerRowHeight;
+
+            // Draw ALL data rows
+            for (int row = 0; row < tableEntries.Count; row++)
+            {
+                var entry = tableEntries[row];
+                var isAlternate = row % 2 == 1;
+
+                // Alternate row background
+                if (isAlternate)
+                {
+                    g.FillRectangle(altRowBrush, x, currentY, tableWidth, rowHeight);
+                }
+
+                // Data values
+                var values = new string[]
+                {
+            entry.Date.ToString("yyyy-MM-dd"),
+            entry.PHQ9?.ToString() ?? "—",
+            entry.GAD7?.ToString() ?? "—",
+            entry.BDI2?.ToString() ?? "—",
+            entry.PCL5?.ToString() ?? "—",
+            entry.YBOCS?.ToString() ?? "—"
+                };
+
+                // Draw cells
+                var currentX = x;
+                for (int i = 0; i < values.Length; i++)
+                {
+                    var colWidth = baseColWidth + (i == values.Length - 1 ? remainder : 0);
+
+                    g.DrawString(values[i], cellFont, blackBrush,
+                                currentX + 8, currentY + 4);
+
+                    if (i < values.Length - 1)
+                    {
+                        g.DrawLine(lightGrayPen, currentX + colWidth, currentY,
+                                  currentX + colWidth, currentY + rowHeight);
+                    }
+
+                    currentX += colWidth;
+                }
+
+                // Draw row separator
+                g.DrawLine(separatorPen, x, currentY + rowHeight,
+                          x + tableWidth, currentY + rowHeight);
+
+                currentY += rowHeight;
+            }
+
+            // Draw table border
+            g.DrawRectangle(grayPen, x, y, tableWidth, currentY - y);
+
+            // Add summary text below table
+            currentY += 10;
+            using (var summaryFont = new DrawingFont("Arial", 8, DrawingFontStyle.Italic))
+            {
+                g.DrawString($"Table shows all {tableEntries.Count} assessment records in chronological order",
+                            summaryFont, new SolidBrush(DrawingColor.DarkGray), x, currentY);
+            }
+
+            return currentY + 10;
+        }
+
+        // Optimized text wrapping with cached space width
+        private List<string> WrapTextOptimized(string text, DrawingFont font, int maxWidth, DrawingGraphics g, float spaceWidth)
+        {
+            var lines = new List<string>();
+            var words = text.Split(' ');
+            var currentLine = "";
+            var currentWidth = 0f;
+
+            foreach (var word in words)
+            {
+                var wordWidth = g.MeasureString(word, font).Width;
+                var testWidth = currentWidth == 0 ? wordWidth : currentWidth + spaceWidth + wordWidth;
+
+                if (testWidth > maxWidth && !string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                    currentLine = word;
+                    currentWidth = wordWidth;
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(currentLine))
+                    {
+                        currentLine = word;
+                        currentWidth = wordWidth;
+                    }
+                    else
+                    {
+                        currentLine += " " + word;
+                        currentWidth = testWidth;
                     }
                 }
             }
-            currentY += rowHeight;
+
+            if (!string.IsNullOrEmpty(currentLine))
+            {
+                lines.Add(currentLine);
+            }
+
+            return lines;
+        }
+
+        private int CreateDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth,
+                            int maxRows, DrawingFont cellFont, DrawingFont headerFont, int rowHeight)
+        {
+            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
+            var lightGray = DrawingColor.FromArgb(240, 240, 240);
+            var subtleGray = DrawingColor.FromArgb(220, 220, 220);
+
+            // Take most recent entries for the table
+            var tableEntries = entries.TakeLast(maxRows).ToList();
+
+            // Column setup with proper width distribution
+            var columns = new[] { "Date", "PHQ-9", "GAD-7", "BDI-II", "PCL-5", "Y-BOCS" };
+            var baseColWidth = tableWidth / columns.Length;
+            var remainder = tableWidth % columns.Length;
+
+            var headerRowHeight = rowHeight + 4;
+            var currentY = y;
+
+            // FIXED: Create new pens instead of using system pens
+            using var altRowBrush = new SolidBrush(lightGray);
+            using var separatorPen = new System.Drawing.Pen(subtleGray, 1);
+            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
+            using var whitePen = new System.Drawing.Pen(DrawingColor.White, 1);
+            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
+            using var blackBrush = new SolidBrush(DrawingColor.Black);
+
+            // Draw header
+            using (var headerBrush = new SolidBrush(reconnectBlue))
+            {
+                g.FillRectangle(headerBrush, x, currentY, tableWidth, headerRowHeight);
+
+                var currentX = x;
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    // Add remainder pixels to the last column for perfect fit
+                    var colWidth = baseColWidth + (i == columns.Length - 1 ? remainder : 0);
+
+                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
+                                currentX + 8, currentY + 6);
+
+                    // Draw column separator with new pen
+                    if (i < columns.Length - 1)
+                    {
+                        g.DrawLine(whitePen, currentX + colWidth, currentY,
+                                  currentX + colWidth, currentY + headerRowHeight);
+                    }
+
+                    currentX += colWidth;
+                }
+            }
+            currentY += headerRowHeight;
 
             // Draw data rows
             for (int row = 0; row < tableEntries.Count; row++)
@@ -1283,145 +1532,174 @@ namespace PatientTrackerWPF
                 // Alternate row background
                 if (isAlternate)
                 {
-                    using (var altBrush = new SolidBrush(lightGray))
-                    {
-                        g.FillRectangle(altBrush, x, currentY, tableWidth, rowHeight);
-                    }
+                    g.FillRectangle(altRowBrush, x, currentY, tableWidth, rowHeight);
                 }
 
-                // Data values
+                // Data values with ISO 8601 date format
                 var values = new string[]
                 {
-                    entry.Date.ToString("dd-MMM-yyyy"),
-                    entry.PHQ9?.ToString() ?? "—",
-                    entry.GAD7?.ToString() ?? "—",
-                    entry.BDI2?.ToString() ?? "—",
-                    entry.PCL5?.ToString() ?? "—",
-                    entry.YBOCS?.ToString() ?? "—"
+            entry.Date.ToString("yyyy-MM-dd"),
+            entry.PHQ9?.ToString() ?? "—",
+            entry.GAD7?.ToString() ?? "—",
+            entry.BDI2?.ToString() ?? "—",
+            entry.PCL5?.ToString() ?? "—",
+            entry.YBOCS?.ToString() ?? "—"
                 };
 
-                // Draw cells
+                // Draw cells with proper column width distribution
+                var currentX = x;
                 for (int i = 0; i < values.Length; i++)
                 {
-                    var cellX = x + (i * colWidth);
-                    g.DrawString(values[i], cellFont, DrawingBrushes.Black,
-                                cellX + 10, currentY + 5);
+                    var colWidth = baseColWidth + (i == values.Length - 1 ? remainder : 0);
+
+                    g.DrawString(values[i], cellFont, blackBrush,
+                                currentX + 8, currentY + 4);
 
                     // Draw column separator
                     if (i < values.Length - 1)
                     {
-                        g.DrawLine(DrawingPens.LightGray, cellX + colWidth, currentY,
-                                  cellX + colWidth, currentY + rowHeight);
+                        g.DrawLine(lightGrayPen, currentX + colWidth, currentY,
+                                  currentX + colWidth, currentY + rowHeight);
                     }
+
+                    currentX += colWidth;
                 }
 
-                // Draw row separator
-                g.DrawLine(DrawingPens.LightGray, x, currentY + rowHeight,
+                // Draw subtle row separator
+                g.DrawLine(separatorPen, x, currentY + rowHeight,
                           x + tableWidth, currentY + rowHeight);
 
                 currentY += rowHeight;
             }
 
-            // Draw table border
-            g.DrawRectangle(DrawingPens.Gray, x, y, tableWidth, currentY - y);
-
-            cellFont.Dispose();
-            headerFont.Dispose();
+            // Draw table border with new pen
+            g.DrawRectangle(grayPen, x, y, tableWidth, currentY - y);
 
             return currentY;
         }
-
-        private int CreateProgressChart(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int chartWidth, int chartHeight)
+        private int CreateProgressChart(DrawingGraphics g, List<ScoreEntry> entries,
+                                        int x, int y, int chartWidth, int chartHeight)
         {
-            if (!entries.Any()) return y;
+            if (!entries.Any()) return y + 50;
 
-            var chartArea = new DrawingRectangle(x + 60, y + 40, chartWidth - 120, chartHeight - 80);
-            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
-            var treatmentPhase = DrawingColor.FromArgb(150, 255, 255, 204); // Light yellow with transparency
+            // Keep inner plot area sane even if chartHeight is small
+            var innerH = Math.Max(120, chartHeight - 100);
+            var chartArea = new DrawingRectangle(x + 60, y + 40, chartWidth - 120, innerH);
 
-            // Draw chart background
-            g.FillRectangle(DrawingBrushes.White, chartArea);
-            g.DrawRectangle(DrawingPens.Gray, chartArea);
+            using var whiteBrush = new SolidBrush(DrawingColor.White);
+            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
+            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
+            using var blackBrush = new SolidBrush(DrawingColor.Black);
+            using var arialFont8 = new DrawingFont("Arial", 8);
 
-   /*         // Treatment phase background
-            var phaseStart = entries.Count > 2 ? 0.2f : 0;
-            var phaseEnd = entries.Count > 4 ? 0.8f : 1;*/
-/*
-            var phaseStartX = chartArea.X + (int)(chartArea.Width * phaseStart);
-            var phaseWidth = (int)(chartArea.Width * (phaseEnd - phaseStart));*/
+            g.FillRectangle(whiteBrush, chartArea);
+            g.DrawRectangle(grayPen, chartArea);
 
-   /*         using (var phaseBrush = new SolidBrush(treatmentPhase))
-            {
-                g.FillRectangle(phaseBrush, phaseStartX, chartArea.Y, phaseWidth, chartArea.Height);
-            }
-*/
- /*           // Add phase label
-            g.DrawString("Treatment Phase", new DrawingFont("Arial", 8), new SolidBrush(reconnectBlue),
-                        phaseStartX + 10, chartArea.Y + 10);
-*/
-            // Determine Y-axis range based on actual data
+            // Build range
             var allScores = new List<int>();
-            foreach (var entry in entries)
+            foreach (var e in entries)
             {
-                if (entry.PHQ9.HasValue) allScores.Add(entry.PHQ9.Value);
-                if (entry.GAD7.HasValue) allScores.Add(entry.GAD7.Value);
-                if (entry.BDI2.HasValue) allScores.Add(entry.BDI2.Value);
-                if (entry.PCL5.HasValue) allScores.Add(entry.PCL5.Value);
-                if (entry.YBOCS.HasValue) allScores.Add(entry.YBOCS.Value);
+                if (e.PHQ9.HasValue) allScores.Add(e.PHQ9.Value);
+                if (e.GAD7.HasValue) allScores.Add(e.GAD7.Value);
+                if (e.BDI2.HasValue) allScores.Add(e.BDI2.Value);
+                if (e.PCL5.HasValue) allScores.Add(e.PCL5.Value);
+                if (e.YBOCS.HasValue) allScores.Add(e.YBOCS.Value);
             }
 
-            // Use actual data range instead of fixed 0-80
-            var minScore = allScores.Any() ? Math.Max(0, allScores.Min() - 5) : 0;
-            var maxScore = allScores.Any() ? Math.Min(80, allScores.Max() + 10) : 80;
-            var scoreRange = maxScore - minScore;
+            double minScore = allScores.Any() ? Math.Max(0, allScores.Min() - 5) : 0;
+            double maxScore = allScores.Any() ? Math.Min(80, allScores.Max() + 10) : 80;
 
-            // Draw grid lines based on actual range
-            var gridSteps = Math.Min(8, scoreRange / 5); // Adaptive grid
+            // ✅ avoid zero range (flat line)
+            if (Math.Abs(maxScore - minScore) < 0.0001)
+                maxScore = minScore + 1;
+
+            double scoreRange = maxScore - minScore;
+
+            // ✅ grid steps: at least 1
+            int gridSteps = Math.Max(1, Math.Min(8, (int)Math.Ceiling(scoreRange / 10.0)));
+
             for (int i = 0; i <= gridSteps; i++)
             {
-                var gridY = chartArea.Y + (i * chartArea.Height / gridSteps);
-                g.DrawLine(DrawingPens.LightGray, chartArea.X, gridY, chartArea.Right, gridY);
+                var gridY = (float)(chartArea.Y + (i * chartArea.Height / (double)gridSteps));
+                g.DrawLine(lightGrayPen, chartArea.X, gridY, chartArea.Right, gridY);
 
-                // Y-axis labels based on actual range
                 var value = maxScore - (i * scoreRange / gridSteps);
-                g.DrawString(((int)value).ToString(), new DrawingFont("Arial", 8), DrawingBrushes.Black,
-                            chartArea.X - 30, gridY - 6);
+                g.DrawString(((int)Math.Round(value)).ToString(), arialFont8, blackBrush,
+                             chartArea.X - 30, gridY - 6);
             }
 
-            // Draw vertical grid lines
+            // vertical grid
             for (int i = 0; i <= 10; i++)
             {
-                var gridX = chartArea.X + (i * chartArea.Width / 10);
-                g.DrawLine(DrawingPens.LightGray, gridX, chartArea.Y, gridX, chartArea.Bottom);
+                var gridX = chartArea.X + (i * chartArea.Width / 10.0);
+                g.DrawLine(lightGrayPen, (float)gridX, chartArea.Y, (float)gridX, chartArea.Bottom);
             }
 
-            // Plot assessment lines with correct scaling
+            // series
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.PHQ9, DrawingColor.Blue, "PHQ-9", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.GAD7, DrawingColor.Green, "GAD-7", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.BDI2, DrawingColor.Orange, "BDI-II", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.PCL5, DrawingColor.DarkCyan, "PCL-5", minScore, maxScore);
             PlotAssessmentLineFixed(g, entries, chartArea, e => e.YBOCS, DrawingColor.Purple, "Y-BOCS", minScore, maxScore);
 
-            // Draw legend
-            DrawChartLegend(g, chartArea.Right - 200, chartArea.Y);
+            // bottom elements
+            var currentBottomY = chartArea.Bottom;
 
-            // X-axis labels (dates) - better spacing
-            var dateStep = Math.Max(1, entries.Count / 6);
+            int dateStep = Math.Max(1, entries.Count / 6);
             for (int i = 0; i < entries.Count; i += dateStep)
             {
-                var entry = entries[i];
-                // Proper X positioning for dates
-                var pointX = chartArea.X + (i * chartArea.Width / Math.Max(1, entries.Count - 1));
-                g.DrawString(entry.Date.ToString("dd-MMM"), new DrawingFont("Arial", 8), DrawingBrushes.Black,
-                            pointX - 20, chartArea.Bottom + 10);
+                var ptX = chartArea.X + (i * chartArea.Width / Math.Max(1.0, entries.Count - 1));
+                g.DrawString(entries[i].Date.ToString("dd-MMM"), arialFont8, blackBrush,
+                             (float)ptX - 20, currentBottomY + 10);
             }
+            currentBottomY += 25;
 
-            return y + chartHeight;
+            // ✅ FIXED: Use the actual return value from legend method
+            currentBottomY = DrawChartLegendHorizontal(g, chartArea.X, currentBottomY + 15, chartArea.Width);
+
+            return currentBottomY + 10; // padding
         }
 
+        private int DrawChartLegendHorizontal(DrawingGraphics g, int x, int y, int width)
+        {
+            var legendItems = new[]
+            {
+        ("PHQ-9", DrawingColor.Blue),
+        ("GAD-7", DrawingColor.Green),
+        ("BDI-II", DrawingColor.Orange),
+        ("PCL-5", DrawingColor.DarkCyan),
+        ("Y-BOCS", DrawingColor.Purple)
+    };
+
+            // Guard against zero width
+            var safeWidth = Math.Max(300, width);
+            var itemWidth = safeWidth / legendItems.Length;
+            var currentX = x;
+            const int legendHeight = 20;
+
+            using (var arialFont = new DrawingFont("Arial", 9))
+            using (var blackBrush = new SolidBrush(DrawingColor.Black))
+            {
+                foreach (var (label, color) in legendItems)
+                {
+                    // Draw line sample
+                    using (var pen = new System.Drawing.Pen(color, 3))
+                    {
+                        g.DrawLine(pen, currentX, y, currentX + 20, y);
+                    }
+
+                    // Draw label with bounds checking
+                    var labelX = Math.Min(currentX + 25, x + safeWidth - 50); // Prevent overflow
+                    g.DrawString(label, arialFont, blackBrush, labelX, y - 5);
+                    currentX += itemWidth;
+                }
+            }
+
+            return y + legendHeight; // Return actual bottom position
+        }
         private void PlotAssessmentLineFixed(DrawingGraphics g, List<ScoreEntry> entries, DrawingRectangle chartArea,
-                                         Func<ScoreEntry, int?> scoreSelector, DrawingColor color,
-                                         string label, double minScore, double maxScore)
+                                 Func<ScoreEntry, int?> scoreSelector, DrawingColor color,
+                                 string label, double minScore, double maxScore)
         {
             var points = new List<DrawingPointF>();
             var scoreRange = maxScore - minScore;
@@ -1445,14 +1723,18 @@ namespace PatientTrackerWPF
 
             if (points.Count > 1)
             {
-                using (var pen = new System.Drawing.Pen(color, 3))
+                // FIXED: Create new pen instead of modifying system pen
+                using (var linePen = new System.Drawing.Pen(color, 3))
                 {
-                    g.DrawLines(pen, points.ToArray());
+                    g.DrawLines(linePen, points.ToArray());
                 }
             }
+
             // Draw points with score labels
             using (var brush = new SolidBrush(color))
             using (var font = new DrawingFont("Arial", 8, DrawingFontStyle.Bold))
+            using (var whitePen = new System.Drawing.Pen(DrawingColor.White, 1))
+            using (var blackBrush = new SolidBrush(DrawingColor.Black))
             {
                 for (int i = 0; i < points.Count; i++)
                 {
@@ -1460,13 +1742,13 @@ namespace PatientTrackerWPF
 
                     // Draw point
                     g.FillEllipse(brush, point.X - 4, point.Y - 4, 8, 8);
-                    g.DrawEllipse(DrawingPens.White, point.X - 4, point.Y - 4, 8, 8);
+                    g.DrawEllipse(whitePen, point.X - 4, point.Y - 4, 8, 8);
 
                     // Add score labels on points
                     var scoreValue = scoreSelector(entries[GetEntryIndexForPoint(entries, i, scoreSelector)]);
                     if (scoreValue.HasValue)
                     {
-                        g.DrawString(scoreValue.Value.ToString(), font, DrawingBrushes.Black,
+                        g.DrawString(scoreValue.Value.ToString(), font, blackBrush,
                                    point.X - 8, point.Y - 20);
                     }
                 }
@@ -1627,31 +1909,7 @@ namespace PatientTrackerWPF
             currentPatientEntries.Clear();
         }
 
-        private void DrawChartLegend(DrawingGraphics g, int x, int y)
-        {
-            var legendItems = new[]
-            {
-                ("PHQ-9", DrawingColor.Blue),
-                ("GAD-7", DrawingColor.Green),
-                ("BDI-II", DrawingColor.Orange),
-                ("PCL-5", DrawingColor.DarkCyan),
-                ("Y-BOCS", DrawingColor.Purple)
-            };
 
-            var currentY = y;
-            foreach (var (label, color) in legendItems)
-            {
-                // Draw line sample
-                using (var pen = new System.Drawing.Pen(color, 3))
-                {
-                    g.DrawLine(pen, x, currentY + 5, x + 20, currentY + 5);
-                }
-
-                // Draw label
-                g.DrawString(label, new DrawingFont("Arial", 9), DrawingBrushes.Black, x + 25, currentY);
-                currentY += 20;
-            }
-        }
 
         private void NoteBox_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
@@ -1659,22 +1917,98 @@ namespace PatientTrackerWPF
                 MessageBox.Show(txt, "Full Treatment Note");
         }
 
+        private bool _handlingSelection;
+
         private async void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (PatientSelector.SelectedItem is string id)
+            if (_handlingSelection) return;          // ignore re-entrant calls
+            _handlingSelection = true;
+            try
             {
-                // Always load from database
-                await LoadPatientDataFromDatabase(id);
-                UpdateChartForPatient(id);
+                if (PatientSelector.SelectedItem is not string id || id.Length == 0)
+                    return;
 
+                await LoadPatientDataFromDatabase(id);   // touches DB for *one* patient
+                UpdateChartForPatient(id);
                 PatientIdBox.Text = id;
 
-                if (currentMetrics != null)
+                await RecalculateMetricsOnlyAsync();     // no DB, no Items.Clear()
+                UpdateCurrentPatientOutcome(id);         // refresh right-hand pane
+            }
+            finally
+            {
+                _handlingSelection = false;
+            }
+        }
+        private Task RecalculateMetricsOnlyAsync()
+        {
+            currentMetrics = metricsService.CalculateCombinedMetrics(patientData);
+            UpdateMetricsDisplay(currentMetrics);
+            return Task.CompletedTask;
+        }
+
+
+/*        private async Task RecalculateAndRefreshWithCacheAsync(string focusPatientId = null)
+        {
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                // Only recalculate if:
+                // 1. We've never calculated before (currentMetrics is null)
+                // 2. The data is stale (older than 5 minutes)
+                // 3. Patient data has been modified since last calculation
+
+                bool shouldRecalculate = currentMetrics == null ||
+                                         DateTime.Now - currentMetrics.CalculatedOn > TimeSpan.FromMinutes(5) ||
+                                         HasDataChangedSinceLastCalculation();
+
+                if (shouldRecalculate)
                 {
-                    UpdateCurrentPatientOutcome(id);
-                    ResetMetricsDisplay();
+                    // Full recalculation
+                    await LoadAllPatientsFromDatabase();
+                    currentMetrics = metricsService.CalculateCombinedMetrics(patientData);
+                    UpdateMetricsDisplay(currentMetrics);
+
+                    System.Diagnostics.Debug.WriteLine($"Full metrics recalculation at {DateTime.Now:HH:mm:ss}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"Using cached metrics from {currentMetrics.CalculatedOn:HH:mm:ss}");
+                }
+
+                // Always update the selected patient display
+                if (!string.IsNullOrWhiteSpace(focusPatientId))
+                {
+                    UpdateCurrentPatientOutcome(focusPatientId);
+                }
+
+                // Auto-expand metrics panel if needed
+                if (!isMetricsExpanded)
+                {
+                    isMetricsExpanded = true;
+                    MetricsContent.Visibility = Visibility.Visible;
+                    MetricsToggleIcon.Text = "▼";
+                    QuickStats.Visibility = Visibility.Collapsed;
                 }
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error calculating metrics: {ex.Message}", "Calculation Error",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+        }*/
+
+        private DateTime lastDataModification = DateTime.Now;
+        private bool HasDataChangedSinceLastCalculation()
+        {
+            // This gets set to true whenever AddScore, Delete, or Import happens
+            // For now, return false to use time-based caching only
+            return currentMetrics != null && lastDataModification > currentMetrics.CalculatedOn;
         }
 
         private async Task LoadPatientDataFromDatabase(string patientId)
@@ -1699,19 +2033,35 @@ namespace PatientTrackerWPF
 
         private void ResetMetricsDisplay()
         {
+            // Reset PHQ-9 Response displays
             ResponseRateText.Text = "0.0%";
             ResponseCountText.Text = "(0/0)";
+
+            // Reset BDI-II Remission displays  
             RemissionRateText.Text = "0.0%";
             RemissionCountText.Text = "(0/0)";
+
+            // Reset combined displays
             AverageImprovementText.Text = "0.0%";
-            EligiblePatientsText.Text = "0";
+
+            // CHANGED: Use TotalEligibleText instead of EligiblePatientsText
+            TotalEligibleText.Text = "0";
+
+            // Reset individual eligible counts
+            PHQ9EligibleText.Text = "0";
+            BDI2EligibleText.Text = "0";
 
             QuickResponseRate.Text = "0.0%";
             QuickRemissionRate.Text = "0.0%";
 
-            // Reset colors to default (optional)
+            // Reset colors to default
             ResponseRateText.Foreground = Brushes.Black;
             RemissionRateText.Foreground = Brushes.Black;
+
+            // Reset patient outcome displays
+            CurrentPatientOutcomeTitle.Text = "No patient selected";
+            CurrentPatientOutcomeDetails.Text = "Select a patient from the dropdown to view their clinical outcomes analysis.";
+            CurrentPatientProgressSummary.Text = "Patient-specific response and remission status will appear here when a patient is selected.";
         }
 
         private async void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1747,23 +2097,18 @@ namespace PatientTrackerWPF
         {
             try
             {
-                // LOAD FRESH DATA FROM DATABASE instead of using patientData dictionary
-                await LoadAllPatientsFromDatabase();
+                var selectedId = PatientSelector.SelectedItem?.ToString();
+                await RecalculateAndRefreshAsync(selectedId);
 
-                currentMetrics = metricsService.CalculateBDI2Metrics(patientData);
-                UpdateMetricsDisplay(currentMetrics);
-
-                var selectedPatientId = PatientSelector.SelectedItem?.ToString();
-                if (!string.IsNullOrEmpty(selectedPatientId))
-                {
-                    UpdateCurrentPatientOutcome(selectedPatientId);
-                }
-
-                MessageBox.Show($"✅ Metrics calculated from database!\n\n" +
-                               $"Eligible patients: {currentMetrics.PatientsWithMultipleAssessments}\n" +
-                               $"Response rate: {currentMetrics.ResponseRate:F1}%\n" +
-                               $"Remission rate: {currentMetrics.RemissionRate:F1}%",
-                               "Clinical Metrics", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Show confirmation that manual calculation completed
+                MessageBox.Show($"✅ Clinical outcomes calculated!\n\n" +
+                               $"PHQ-9 RESPONSE ANALYSIS:\n" +
+                               $"  • Current response rate: {currentMetrics.ResponseRate:F1}%\n" +
+                               $"  • Ever achieved response: {currentMetrics.EverAchievedResponseRate:F1}%\n\n" +
+                               $"BDI-II REMISSION ANALYSIS:\n" +
+                               $"  • Current remission rate: {currentMetrics.RemissionRate:F1}%\n" +
+                               $"  • Ever achieved remission: {currentMetrics.EverAchievedRemissionRate:F1}%",
+                               "Clinical Outcomes", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -1794,56 +2139,126 @@ namespace PatientTrackerWPF
 
         private void UpdateMetricsDisplay(ClinicalMetricsService.ClinicalMetrics metrics)
         {
+            // PHQ-9 Response metrics (≥50% improvement)
             ResponseRateText.Text = $"{metrics.ResponseRate:F1}%";
-            ResponseCountText.Text = $"({metrics.ResponseCount}/{metrics.PatientsWithMultipleAssessments})";
+            ResponseCountText.Text = $"({metrics.ResponseCount}/{metrics.EligibleForResponse})";
 
+            // BDI-II Remission metrics (score ≤14)
             RemissionRateText.Text = $"{metrics.RemissionRate:F1}%";
-            RemissionCountText.Text = $"({metrics.RemissionCount}/{metrics.PatientsWithMultipleAssessments})";
+            RemissionCountText.Text = $"({metrics.RemissionCount}/{metrics.EligibleForRemission})";
 
+            // Combined metrics
             AverageImprovementText.Text = $"{metrics.AverageImprovement:F1}%";
-            EligiblePatientsText.Text = metrics.PatientsWithMultipleAssessments.ToString();
 
+            // CHANGED: Use TotalEligibleText instead of EligiblePatientsText
+            TotalEligibleText.Text = metrics.PatientsWithMultipleAssessments.ToString();
+
+            // Individual eligible counts
+            PHQ9EligibleText.Text = metrics.EligibleForResponse.ToString();
+            BDI2EligibleText.Text = metrics.EligibleForRemission.ToString();
+
+            // Quick stats
             QuickResponseRate.Text = $"{metrics.ResponseRate:F1}%";
             QuickRemissionRate.Text = $"{metrics.RemissionRate:F1}%";
 
-            // Color coding
+            // Color coding - different thresholds for response vs remission
             ResponseRateText.Foreground = metrics.ResponseRate >= 50 ? Brushes.Green :
-                                         metrics.ResponseRate >= 30 ? Brushes.Orange : Brushes.Red;
+                                         metrics.ResponseRate >= 30 ? new SolidColorBrush(Color.FromRgb(70, 130, 180)) : Brushes.Red;
 
-            RemissionRateText.Foreground = metrics.RemissionRate >= 30 ? Brushes.Blue :
-                                          metrics.RemissionRate >= 15 ? Brushes.Orange : Brushes.Red;
+            RemissionRateText.Foreground = metrics.RemissionRate >= 30 ? new SolidColorBrush(Color.FromRgb(139, 69, 19)) :
+                                          metrics.RemissionRate >= 15 ? new SolidColorBrush(Color.FromRgb(255, 140, 0)) : Brushes.Red;
         }
+
 
         private void UpdateCurrentPatientOutcome(string patientId)
         {
             if (currentMetrics == null || !patientData.ContainsKey(patientId))
             {
-                CurrentPatientOutcome.Visibility = Visibility.Collapsed;
+                CurrentPatientOutcomeTitle.Text = "No patient selected";
+                CurrentPatientOutcomeDetails.Text = "Select a patient from the dropdown to view their clinical outcomes analysis.";
+                CurrentPatientProgressSummary.Text = "Patient-specific response and remission status will appear here when a patient is selected.";
                 return;
             }
 
             var outcome = currentMetrics.PatientOutcomes.FirstOrDefault(p => p.PatientId == patientId);
             if (outcome == null)
             {
-                CurrentPatientOutcomeTitle.Text = $"Patient {patientId}: Not eligible for outcome analysis";
-                CurrentPatientOutcomeDetails.Text = "Requires baseline BDI-II ≥14 and at least 2 assessments with BDI-II scores.";
-                CurrentPatientOutcome.Visibility = Visibility.Visible;
+                CurrentPatientOutcomeTitle.Text = $"Patient {patientId}: Insufficient Data";
+                CurrentPatientOutcomeDetails.Text = "This patient does not have sufficient assessment data for clinical outcome analysis. Requires at least 2 assessments with PHQ-9 and/or BDI-II scores.";
+                CurrentPatientProgressSummary.Text = "Unable to calculate response or remission status.";
                 return;
             }
 
-            CurrentPatientOutcomeTitle.Text = $"Patient {patientId} - Clinical Outcome";
+            CurrentPatientOutcomeTitle.Text = $"Patient {patientId} - Clinical Outcomes";
 
-            var details = $"Baseline BDI-II: {outcome.BaselineBDI2} ({outcome.BaselineDate:yyyy-MM-dd}) → " +
-                         $"Most Recent: {outcome.MostRecentBDI2} ({outcome.MostRecentDate:yyyy-MM-dd})\n" +
-                         $"Improvement: {outcome.PercentImprovement:F1}% over {outcome.DaysBetweenAssessments} days\n" +
-                         $"Response (≥50% improvement): {(outcome.HasResponse ? "YES" : "NO")} | " +
-                         $"Remission (score <14): {(outcome.HasRemission ? "YES" : "NO")}\n" +
-                         $"Total BDI-II assessments: {outcome.TotalAssessments}";
+            var details = new StringBuilder();
+            var summary = new StringBuilder();
 
-            CurrentPatientOutcomeDetails.Text = details;
-            CurrentPatientOutcome.Visibility = Visibility.Visible;
+            // PHQ-9 Response information
+            if (outcome.BaselinePHQ9.HasValue && outcome.MostRecentPHQ9.HasValue)
+            {
+                details.AppendLine($"PHQ-9 RESPONSE ANALYSIS:");
+                details.AppendLine($"Baseline: {outcome.BaselinePHQ9} ({outcome.PHQ9BaselineDate:yyyy-MM-dd}) → Most Recent: {outcome.MostRecentPHQ9} ({outcome.PHQ9MostRecentDate:yyyy-MM-dd})");
+                details.AppendLine($"Improvement: {outcome.PHQ9PercentImprovement:F1}% over {outcome.DaysBetweenAssessments} days");
+                details.AppendLine($"Response (≥50% improvement): {(outcome.HasResponse ? "YES" : "NO")} | Remission (score ≤14): N/A");
+                details.AppendLine($"Ever Achieved Response: {(outcome.EverAchievedResponse ? "YES" : "NO")} | Ever Achieved Remission: N/A");
+
+                if (outcome.EverAchievedResponse && outcome.FirstResponseDate.HasValue)
+                {
+                    details.AppendLine($"First Response Date: {outcome.FirstResponseDate.Value:yyyy-MM-dd}");
+                    details.AppendLine($"Best Improvement: {outcome.BestPHQ9Improvement:F1}%");
+                }
+
+                summary.AppendLine($"PHQ-9 Response: {(outcome.HasResponse ? "✓ CURRENTLY YES" : "✗ Currently No")}");
+                summary.AppendLine($"Ever Achieved Response: {(outcome.EverAchievedResponse ? "✓ YES" : "✗ NO")}");
+            }
+            else
+            {
+                details.AppendLine($"PHQ-9 RESPONSE ANALYSIS: Insufficient data (need ≥2 PHQ-9 assessments)");
+            }
+
+            // BDI-II Remission information
+            if (outcome.BaselineBDI2.HasValue && outcome.MostRecentBDI2.HasValue)
+            {
+                details.AppendLine();
+                details.AppendLine($"BDI-II REMISSION ANALYSIS:");
+                details.AppendLine($"Baseline BDI-II: {outcome.BaselineBDI2} ({outcome.BDI2BaselineDate:yyyy-MM-dd}) → Most Recent: {outcome.MostRecentBDI2} ({outcome.BDI2MostRecentDate:yyyy-MM-dd})");
+                details.AppendLine($"Improvement: {outcome.BDI2PercentImprovement:F1}% over {outcome.DaysBetweenAssessments} days");
+                details.AppendLine($"Response (≥50% improvement): {(outcome.BDI2PercentImprovement >= 50 ? "YES" : "NO")} | Remission (score ≤14): {(outcome.HasRemission ? "YES" : "NO")}");
+                details.AppendLine($"Ever Achieved Response: {(outcome.BDI2PercentImprovement >= 50 ? "YES" : "NO")} | Ever Achieved Remission: {(outcome.EverAchievedRemission ? "YES" : "NO")}");
+                details.AppendLine($"Total assessments: {outcome.TotalAssessments}");
+
+                if (outcome.EverAchievedRemission)
+                {
+                    if (outcome.FirstRemissionDate.HasValue)
+                        details.AppendLine($"First Remission Date: {outcome.FirstRemissionDate.Value:yyyy-MM-dd}");
+                    if (outcome.LowestBDI2Score.HasValue)
+                        details.AppendLine($"Lowest BDI-II Score: {outcome.LowestBDI2Score}");
+                }
+
+                summary.AppendLine($"BDI-II Remission: {(outcome.HasRemission ? "✓ CURRENTLY YES" : "✗ Currently No")} (current score: {outcome.MostRecentBDI2})");
+                summary.AppendLine($"Ever Achieved Remission: {(outcome.EverAchievedRemission ? "✓ YES" : "✗ NO")}");
+            }
+            else
+            {
+                details.AppendLine();
+                details.AppendLine($"BDI-II REMISSION ANALYSIS: Insufficient data (need ≥2 BDI-II assessments)");
+            }
+
+            // Overall clinical status
+            summary.AppendLine();
+            if ((outcome.HasResponse || outcome.EverAchievedResponse) && (outcome.HasRemission || outcome.EverAchievedRemission))
+                summary.AppendLine($"Overall Status: ✓ EXCELLENT (Achieved both outcomes)");
+            else if (outcome.HasResponse || outcome.EverAchievedResponse || outcome.HasRemission || outcome.EverAchievedRemission)
+                summary.AppendLine($"Overall Status: ⚠ PARTIAL (Some outcomes achieved)");
+            else if (outcome.BaselinePHQ9.HasValue || outcome.BaselineBDI2.HasValue)
+                summary.AppendLine($"Overall Status: ✗ NEEDS IMPROVEMENT (No outcomes achieved yet)");
+            else
+                summary.AppendLine($"Overall Status: ? INSUFFICIENT DATA");
+
+            CurrentPatientOutcomeDetails.Text = details.ToString();
+            CurrentPatientProgressSummary.Text = summary.ToString();
         }
-
         private void ExportMetricsReport_Click(object sender, RoutedEventArgs e)
         {
             if (currentMetrics == null)
@@ -1980,6 +2395,49 @@ namespace PatientTrackerWPF
                                MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+        private async Task RecalculateAndRefreshAsync(string focusPatientId = null)
+        {
+            try
+            {
+                Mouse.OverrideCursor = Cursors.Wait;
+
+                // 1. Ensure in-memory dictionary is up-to-date with database
+                await LoadAllPatientsFromDatabase();
+
+                // 2. (Re)calculate metrics for ALL patients
+                currentMetrics = metricsService.CalculateCombinedMetrics(patientData);
+
+                // 3. Update the summary tiles (Response Rate, Remission Rate, etc.)
+                UpdateMetricsDisplay(currentMetrics);
+
+                // 4. If a patient is selected, refresh their outcome block
+                if (!string.IsNullOrWhiteSpace(focusPatientId))
+                {
+                    UpdateCurrentPatientOutcome(focusPatientId);
+                }
+
+                // 5. Auto-expand the metrics panel if it's collapsed
+                if (!isMetricsExpanded)
+                {
+                    isMetricsExpanded = true;
+                    MetricsContent.Visibility = Visibility.Visible;
+                    MetricsToggleIcon.Text = "▼";
+                    QuickStats.Visibility = Visibility.Collapsed;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Metrics auto-calculated at {DateTime.Now:HH:mm:ss}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error calculating metrics: {ex.Message}", "Calculation Error",
+                               MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                Mouse.OverrideCursor = null;
+            }
+        }
+
 
         private void BackupNowButton_Click(object sender, RoutedEventArgs e)
         {
