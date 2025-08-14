@@ -1,4 +1,5 @@
 # 🧠 Reconnect Progress Tracker
+.NET WPF Entity Framework License
 
 <img width="1200" height="1600" alt="ReconnectClinicalReport_65511281_20250806_1028" src="https://github.com/user-attachments/assets/bc88b4fc-dac9-4d1b-bb51-42550bc08ce3" />
 <img width="1200" height="1180" alt="ReconnectClinicalReport_18803110_20250731_1556" src="https://github.com/user-attachments/assets/3b314cce-5bf1-492c-bcac-d9b0e88d5140" />
