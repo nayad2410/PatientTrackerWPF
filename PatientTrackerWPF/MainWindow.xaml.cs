@@ -11,9 +11,9 @@ using PatientTrackerWPF.Data;
 using PatientTrackerWPF.Helper;
 using PatientTrackerWPF.Models;
 using PatientTrackerWPF.Services;
-using PatientTrackerWPF.Utilities;
+
 using PdfSharp.Drawing;
-using PdfSharp.Xps;
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -34,6 +34,13 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Xps.Packaging;
+using PdfSharp.Pdf;
+
+
+
+using XGraphics = PdfSharp.Drawing.XGraphics; // Explicitly alias the desired `XGraphics` type.
+
+
 using static SkiaSharp.HarfBuzz.SKShaper;
 using static System.Net.Mime.MediaTypeNames;
 using Brushes = System.Windows.Media.Brushes;
@@ -83,7 +90,68 @@ namespace PatientTrackerWPF
         private readonly EncryptionService _encryptionService;
         private bool isInEditMode = false;
         private ScoreEntry editingEntry = null;
+        private readonly string _connectionString;
 
+        // Add this INSIDE your MainWindow class, after your existing fields:
+
+        #region Modern Theme Colors and Helpers
+        private static class ModernTheme
+        {
+            // Modern colors (WCAG-aware, print-safe)
+            public static readonly DrawingColor Ink = DrawingColor.FromArgb(38, 38, 38);
+            public static readonly DrawingColor Muted = DrawingColor.FromArgb(100, 116, 139);
+            public static readonly DrawingColor Line = DrawingColor.FromArgb(228, 232, 240);
+            public static readonly DrawingColor Surface = DrawingColor.FromArgb(249, 250, 251);
+            public static readonly DrawingColor Card = DrawingColor.FromArgb(253, 254, 255);
+            public static readonly DrawingColor Brand = DrawingColor.FromArgb(14, 116, 144);
+            public static readonly DrawingColor Success = DrawingColor.FromArgb(16, 131, 86);
+            public static readonly DrawingColor Danger = DrawingColor.FromArgb(200, 30, 30);
+            public static readonly DrawingColor RemissionBand = DrawingColor.FromArgb(205, 237, 216);
+
+            // Modern chart colors
+            public static readonly DrawingColor ChartBlue = DrawingColor.FromArgb(59, 130, 246);
+            public static readonly DrawingColor ChartGreen = DrawingColor.FromArgb(34, 197, 94);
+            public static readonly DrawingColor ChartOrange = DrawingColor.FromArgb(249, 115, 22);
+            public static readonly DrawingColor ChartCyan = DrawingColor.FromArgb(6, 182, 212);
+            public static readonly DrawingColor ChartPurple = DrawingColor.FromArgb(147, 51, 234);
+
+            // Font helpers
+            public static DrawingFont GetModernFont(int size, bool bold = false)
+            {
+                try
+                {
+                    return new DrawingFont("Segoe UI", size, bold ? DrawingFontStyle.Bold : DrawingFontStyle.Regular);
+                }
+                catch
+                {
+                    return new DrawingFont("Arial", size, bold ? DrawingFontStyle.Bold : DrawingFontStyle.Regular);
+                }
+            }
+
+            // Draw modern card background
+            public static void DrawCard(DrawingGraphics g, DrawingRectangle rect)
+            {
+                using var cardBg = new SolidBrush(Card);
+                using var cardBorder = new System.Drawing.Pen(Line, 1);
+
+                g.FillRectangle(cardBg, rect);
+                g.DrawRectangle(cardBorder, rect);
+            }
+
+            // Draw section title with underline
+            public static int DrawSectionTitle(DrawingGraphics g, string title, int x, int y, DrawingFont font)
+            {
+                using var titleBrush = new SolidBrush(Brand);
+                using var linePen = new System.Drawing.Pen(Line, 1);
+
+                g.DrawString(title, font, titleBrush, x, y);
+                var titleHeight = (int)g.MeasureString(title, font).Height;
+                g.DrawLine(linePen, x, y + titleHeight + 6, x + 600, y + titleHeight + 6);
+
+                return y + titleHeight + 20;
+            }
+        }
+        #endregion
         public MainWindow(
             AuthenticationService authenticationService,
             ICurrentUserService currentUserService,
@@ -92,7 +160,7 @@ namespace PatientTrackerWPF
             AppDbContext dbContext)
         {
             InitializeComponent();
-
+  
             // Assign injected services
             authService = authenticationService;
             this.currentUserService = currentUserService;
@@ -112,14 +180,64 @@ namespace PatientTrackerWPF
             SetupResponsiveLayout();
             UpdateUserDisplay();
 
-            // Always load from database
+            // Show a friendly loading message immediately
+            ShowDatabaseStatus("Connecting to patient database...");
+
+            // Warm up database in background
             _ = Task.Run(async () =>
             {
+                await WarmUpDatabase();
                 await Dispatcher.InvokeAsync(async () =>
                 {
+                    HideDatabaseStatus();
                     await LoadAllPatientsFromDatabase();
                 });
             });
+        }
+        // Always load from database
+        //_ = Task.Run(async () =>
+        //{
+        //    await Dispatcher.InvokeAsync(async () =>
+        //    {
+        //        await LoadAllPatientsFromDatabase();
+        //    });
+        //});
+/*        private string GetConnectionString()
+        {
+
+            return "Server=tcp:reconnect-mental-health.database.windows.net,1433;" +
+                "Initial Catalog=ReconnectMentalHealth-db;" +
+                "Persist Security Info=False;" +
+                "User ID=reconnect-admin;Password={MH2025Project};" +
+                "MultipleActiveResultSets=False;Encrypt=True;" +
+                "TrustServerCertificate=False;" +
+                "Connection Timeout=30";
+        }
+*/
+
+        private void ShowDatabaseStatus(string message)
+        {
+            // Add a small status bar or overlay
+            DatabaseStatusText.Text = message;
+            DatabaseStatusPanel.Visibility = Visibility.Visible;
+        }
+
+        private void HideDatabaseStatus()
+        {
+            DatabaseStatusPanel.Visibility = Visibility.Collapsed;
+        }
+
+        private async Task WarmUpDatabase(int retryCount = 3)
+        {
+            try
+            {
+                await using var db = new AppDbContext(); // short-lived, thread-safe for this call
+                await db.Database.CanConnectAsync();
+            }
+            catch (Exception ex)
+            {
+                ShowDatabaseStatus($"DB connect failed: {ex.Message}");
+            }
         }
 
         private void UpdateUserDisplay()
@@ -689,10 +807,16 @@ namespace PatientTrackerWPF
         {
             try
             {
+                System.Diagnostics.Debug.WriteLine("🔍 Starting LoadAllPatientsFromDatabase...");
+
                 var allEntries = await _dbContext.ScoreEntries
-                    .OrderBy(e => e.PatientId)
-                    .ThenBy(e => e.Date)
-                    .ToListAsync();
+              .AsNoTracking()
+              .OrderBy(e => e.PatientId)
+              .ThenBy(e => e.Date)
+              .ToListAsync();
+
+
+                System.Diagnostics.Debug.WriteLine($"🔍 Found {allEntries.Count} total entries in database");
 
                 patientData.Clear();
                 PatientSelector.Items.Clear();
@@ -707,16 +831,25 @@ namespace PatientTrackerWPF
                     PatientSelector.Items.Add(patientId);
                 }
 
-                System.Diagnostics.Debug.WriteLine($"Loaded {patientData.Keys.Count} patients from database");
+                // ✅ ADD THIS - Update the main grid
+                ScoresGrid.ItemsSource = allEntries;
+
+                System.Diagnostics.Debug.WriteLine($"✅ Loaded {patientData.Keys.Count} patients from database");
+
+                // Show warning if no data
+                if (!allEntries.Any())
+                {
+                    MessageBox.Show("⚠️ No data found in database.\nCheck connection string and ensure data exists.",
+                                   "No Data Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading patients: {ex.Message}");
-                MessageBox.Show($"Error loading data: {ex.Message}", "Database Error",
-                               MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Diagnostics.Debug.WriteLine($"❌ Error loading patients: {ex.Message}");
+                MessageBox.Show($"Database error: {ex.Message}", "Database Error",
+                               MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
         private void LogoutButton_Click(object sender, RoutedEventArgs e)
         {
             var result = MessageBox.Show(
@@ -1064,7 +1197,964 @@ namespace PatientTrackerWPF
             return colors[index % colors.Length];
         }
 
-        private async void GenerateProfessionalReport_Click(object sender, RoutedEventArgs e)
+
+
+
+        private List<int> GetAllScores(List<ScoreEntry> entries)
+        {
+            var allScores = new List<int>();
+            foreach (var e in entries)
+            {
+                if (e.PHQ9.HasValue) allScores.Add(e.PHQ9.Value);
+                if (e.GAD7.HasValue) allScores.Add(e.GAD7.Value);
+                if (e.BDI2.HasValue) allScores.Add(e.BDI2.Value);
+                if (e.PCL5.HasValue) allScores.Add(e.PCL5.Value);
+                if (e.YBOCS.HasValue) allScores.Add(e.YBOCS.Value);
+            }
+            return allScores;
+        }
+
+
+
+
+
+ 
+
+
+        [SupportedOSPlatform("windows")]
+        private void CreateTwoPageClinicalReport(string patientId, List<ScoreEntry> entries, string outputPath, bool generatePdf = true)
+        {
+            // Validation
+            if (string.IsNullOrWhiteSpace(patientId))
+                throw new ArgumentException("Patient ID cannot be empty", nameof(patientId));
+
+            if (entries == null || !entries.Any())
+                throw new ArgumentException("No entries provided", nameof(entries));
+
+            if (string.IsNullOrWhiteSpace(outputPath))
+                throw new ArgumentException("Output path cannot be empty", nameof(outputPath));
+
+            try
+            {
+                // Sort entries once at the top
+                entries = entries.OrderBy(e => e.Date).ToList();
+
+                // Single page dimensions: 8.5" x 11" at 300 DPI
+                const int pageWidth = 2550;
+                const int pageHeight = 3300;
+                const int margin = 150; // 0.5" margin at 300 DPI
+
+                // Guard for null directory
+                var directory = Path.GetDirectoryName(outputPath);
+                if (string.IsNullOrEmpty(directory))
+                {
+                    directory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    outputPath = Path.Combine(directory, Path.GetFileName(outputPath));
+                }
+
+                // Ensure directory exists
+                Directory.CreateDirectory(directory);
+
+                if (generatePdf)
+                {
+                    CreateTwoPagePdf(patientId, entries, outputPath, pageWidth, pageHeight, margin);
+                }
+                else
+                {
+                    CreateTwoPagePngs(patientId, entries, outputPath, pageWidth, pageHeight, margin);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to generate report for patient {patientId}: {ex.Message}", ex);
+            }
+        }
+
+        [SupportedOSPlatform("windows")]
+        private void CreateTwoPagePdf(string patientId, List<ScoreEntry> entries, string outputPath,
+            int pageWidth, int pageHeight, int margin)
+        {
+            // Create both page bitmaps in memory
+            var page1Bitmap = CreatePageBitmap(pageWidth, pageHeight, (g) =>
+                DrawPage1Content(g, patientId, entries, pageWidth, pageHeight, margin));
+
+            var page2Bitmap = CreatePageBitmap(pageWidth, pageHeight, (g) =>
+                DrawPage2Content(g, patientId, entries, pageWidth, pageHeight, margin));
+
+            // Convert to PDF
+            var pdfPath = Path.ChangeExtension(outputPath, ".pdf");
+            SaveBitmapsAsPdf(page1Bitmap, page2Bitmap, pdfPath); // ✅ Removed extra parameter
+
+            page1Bitmap.Dispose();
+            page2Bitmap.Dispose();
+
+            MessageBox.Show($"Two-page PDF report generated successfully!\n\nFile: {pdfPath}",
+                           "PDF Report Generated", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        [SupportedOSPlatform("windows")]
+        private void CreateTwoPagePngs(string patientId, List<ScoreEntry> entries, string outputPath,
+            int pageWidth, int pageHeight, int margin)
+        {
+            // Create Page 1
+            var page1Bitmap = CreatePageBitmap(pageWidth, pageHeight, (g) =>
+                DrawPage1Content(g, patientId, entries, pageWidth, pageHeight, margin));
+
+            // Create Page 2
+            var page2Bitmap = CreatePageBitmap(pageWidth, pageHeight, (g) =>
+                DrawPage2Content(g, patientId, entries, pageWidth, pageHeight, margin));
+
+            // Save both pages
+            var basePath = Path.GetFileNameWithoutExtension(outputPath);
+            var directory = Path.GetDirectoryName(outputPath);
+
+            var page1Path = Path.Combine(directory, $"{basePath}_Page1.png");
+            var page2Path = Path.Combine(directory, $"{basePath}_Page2.png");
+
+            page1Bitmap.Save(page1Path, ImageFormat.Png);
+            page2Bitmap.Save(page2Path, ImageFormat.Png);
+
+            page1Bitmap.Dispose();
+            page2Bitmap.Dispose();
+
+            MessageBox.Show($"Two-page PNG report generated successfully!\n\nPage 1: {page1Path}\nPage 2: {page2Path}",
+                           "PNG Report Generated", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        [SupportedOSPlatform("windows")]
+        private DrawingBitmap CreatePageBitmap(int pageWidth, int pageHeight, Action<DrawingGraphics> drawAction)
+        {
+            var bitmap = new DrawingBitmap(pageWidth, pageHeight);
+            bitmap.SetResolution(300, 300); // ✅ Set proper print resolution
+
+            using (var g = DrawingGraphics.FromImage(bitmap))
+            {
+                SetupGraphicsQuality(g);
+                drawAction(g);
+            }
+
+            return bitmap;
+        }
+
+        private void SaveBitmapsAsPdf(DrawingBitmap page1, DrawingBitmap page2, string pdfPath)
+        {
+            var doc = new PdfDocument();
+            doc.Info.Title = $"Clinical Report - {PatientSelector.Text}";
+            doc.Info.Creator = "Reconnect Mental Health System";
+            doc.Info.Subject = "Clinical Progress Report";
+
+            var bitmaps = new[] { page1, page2 };
+
+            for (int i = 0; i < bitmaps.Length; i++)
+            {
+                var bitmap = bitmaps[i];
+                var page = doc.AddPage();
+                page.Size = PdfSharp.PageSize.Letter; // 8.5" x 11"
+
+                using var xg = XGraphics.FromPdfPage(page);
+
+                // Convert bitmap to memory stream first
+                using var memoryStream = new MemoryStream();
+                bitmap.Save(memoryStream, ImageFormat.Png);
+                memoryStream.Position = 0;
+
+                // Create XImage from memory stream
+                using var xi = XImage.FromStream(memoryStream);
+                const double marginPt = 36; // 0.5" * 72 pt/in
+                xg.DrawImage(xi, marginPt, marginPt, page.Width - 2*marginPt, page.Height - 2*marginPt);
+
+            }
+
+            doc.Save(pdfPath);
+            doc.Close();
+        }
+
+
+        [SupportedOSPlatform("windows")]
+        private int DrawPage1Content(DrawingGraphics g, string patientId, List<ScoreEntry> entries,
+            int pageWidth, int pageHeight, int margin, int yOffset = 0)
+        {
+            const int FOOTER_RESERVED = 90;
+            const int  SECTION_GAP = 36;
+            var usableTop = margin + yOffset;
+            var usableBottom = pageHeight - margin - FOOTER_RESERVED + yOffset;
+
+            // Use modern theme
+            using var surfaceBrush = new SolidBrush(ModernTheme.Surface);
+            g.FillRectangle(surfaceBrush, 0, 0, pageWidth, pageHeight);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            // Modern fonts
+            using var titleFont = ModernTheme.GetModernFont(16, true);
+            using var bodyFont = ModernTheme.GetModernFont(11);
+            using var subHeaderFont = ModernTheme.GetModernFont(12, true);
+            using var chartFont = ModernTheme.GetModernFont(10);
+
+            int currentY = usableTop;
+
+            // Header with single-line layout
+            currentY = DrawPage1Header_Clean(g, patientId, entries, margin, currentY, pageWidth, titleFont, bodyFont);
+            currentY += 48; // More space after header
+
+            if (currentY >= usableBottom) goto Footer;
+
+
+
+            // Chart (enlarged and with better spacing)
+
+            int remaining = Math.Max(300, usableBottom - currentY);
+            int chartHeight = Math.Min(1100, Math.Max(520, (int)(remaining * 0.72)));  // ⬅ bigger
+            int chartWidth = pageWidth - (margin * 2);
+
+            currentY = DrawDateBasedChart_Modern(g, entries, margin, currentY, chartWidth, chartHeight, chartFont);
+            currentY += SECTION_GAP;
+
+       
+            if (currentY >= usableBottom) goto Footer;
+
+            // Summary panel with proper layout
+            currentY = DrawSummaryPanel_Clean(g, entries, margin, currentY, pageWidth, subHeaderFont, bodyFont);
+
+        Footer:
+            DrawPageFooter(g, patientId, 1, pageWidth, pageHeight, margin);
+            return Math.Min(currentY, usableBottom);
+        }
+
+
+        private int DrawDateBasedChart_Modern(
+     DrawingGraphics g, List<ScoreEntry> entries,
+     int x, int y, int chartWidth, int chartHeight, DrawingFont chartFont)
+        {
+            if (!entries.Any())
+            {
+                using var textBrush = new SolidBrush(ModernTheme.Ink);
+                g.DrawString("No assessment data available for chart.", chartFont, textBrush, x, y);
+                return y + 50;
+            }
+
+            // FIXED: Better spacing calculations
+            const int LEGEND_H = 68;
+            const int LEGEND_PAD = 35;           // ⬅ INCREASED from 14
+            const int XAXIS_LABEL_HEIGHT = 45;   // ⬅ FIXED: Reserve proper space for x-axis labels
+            const int LEGEND_SHIFT_RIGHT = 36;
+            const int PLOT_L = 72, PLOT_R = 48, PLOT_T = 42, PLOT_B = 75; // ⬅ INCREASED bottom padding
+
+            // FIXED: Calculate plot height accounting for x-axis labels AND legend
+            var plotH = Math.Max(150, chartHeight - (LEGEND_H + LEGEND_PAD + XAXIS_LABEL_HEIGHT + PLOT_T + PLOT_B));
+            var chartArea = new DrawingRectangle(
+                x + PLOT_L,
+                y + PLOT_T,
+                Math.Max(200, chartWidth - (PLOT_L + PLOT_R)),
+                plotH
+            );
+
+            // Range calc
+            var minDate = entries.First().Date;
+            var maxDate = entries.Last().Date;
+            if (minDate == maxDate) { minDate = minDate.AddDays(-3); maxDate = maxDate.AddDays(+3); }
+
+            var allScores = GetAllScores(entries);
+            if (!allScores.Any()) return y + 50;
+
+            double minScore = Math.Max(0, allScores.Min() - 5);
+            double maxScore = Math.Min(80, allScores.Max() + 10);
+            if (Math.Abs(maxScore - minScore) < 0.0001) maxScore = minScore + 1;
+
+            // Background + border
+            using var chartBg = new SolidBrush(ModernTheme.Card);
+            using var border = new System.Drawing.Pen(ModernTheme.Line, 1);
+            g.FillRectangle(chartBg, chartArea);
+            g.DrawRectangle(border, chartArea);
+
+            DrawRemissionBand(g, chartArea, minScore, maxScore, entries);
+            DrawGrid_Clean(g, chartArea, minScore, maxScore, entries, chartFont);
+            DrawDataSeries_DateScaled(g, entries, chartArea, minScore, maxScore, minDate, maxDate);
+
+
+            // FIXED: Legend positioned with proper spacing from x-axis labels
+            var legendRect = DrawLegendBelowChart(
+                g, chartArea, chartFont, LEGEND_H,
+                XAXIS_LABEL_HEIGHT + LEGEND_PAD,  // ⬅ FIXED: Proper gap calculation
+                LEGEND_SHIFT_RIGHT);
+
+            return legendRect.Bottom + 18;
+        }
+
+        private void DrawDataSeries_DateScaled(
+    DrawingGraphics g, List<ScoreEntry> entries,
+    DrawingRectangle chartArea, double minScore, double maxScore,
+    DateTime minDate, DateTime maxDate)
+        {
+            var series = new[]
+            {
+        (sel: (Func<ScoreEntry,int?>)(e => e.PHQ9),  col: ModernTheme.ChartBlue),
+        (sel: (Func<ScoreEntry,int?>)(e => e.GAD7),  col: ModernTheme.ChartGreen),
+        (sel: (Func<ScoreEntry,int?>)(e => e.BDI2),  col: ModernTheme.ChartOrange),
+        (sel: (Func<ScoreEntry,int?>)(e => e.PCL5),  col: ModernTheme.ChartCyan),
+        (sel: (Func<ScoreEntry,int?>)(e => e.YBOCS), col: ModernTheme.ChartPurple),
+    };
+
+            double scoreRange = Math.Max(1e-6, maxScore - minScore);
+            double dateRange = Math.Max(1e-6, (maxDate - minDate).TotalDays);
+
+            foreach (var s in series)
+            {
+                var pts = new List<(DrawingPointF pt, int val)>();
+
+                foreach (var entry in entries)
+                {
+                    var v = s.sel(entry);
+                    if (!v.HasValue) continue;
+
+                    double dx = (entry.Date - minDate).TotalDays / dateRange; // 0..1
+                    float x = chartArea.X + (float)(dx * chartArea.Width);
+
+                    double ny = (v.Value - minScore) / scoreRange;           // 0..1
+                    float y = chartArea.Bottom - (float)(ny * chartArea.Height);
+
+                    pts.Add((new DrawingPointF(x, y), v.Value));
+                }
+
+                if (pts.Count == 0) continue;
+
+                using var pen = new System.Drawing.Pen(s.col, 3) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+                if (pts.Count > 1) g.DrawLines(pen, pts.Select(p => p.pt).ToArray());
+
+                using var fill = new SolidBrush(s.col);
+                using var white = new System.Drawing.Pen(DrawingColor.White, 2);
+                using var fnt = new DrawingFont("Segoe UI", 8, DrawingFontStyle.Bold);
+                using var txt = new SolidBrush(DrawingColor.FromArgb(50, 50, 50));
+
+                foreach (var p in pts)
+                {
+                    g.FillEllipse(fill, p.pt.X - 6, p.pt.Y - 6, 12, 12);
+                    g.DrawEllipse(white, p.pt.X - 6, p.pt.Y - 6, 12, 12);
+                    var sVal = p.val.ToString();
+                    var sz = g.MeasureString(sVal, fnt);
+                    g.DrawString(sVal, fnt, txt, p.pt.X - sz.Width/2, p.pt.Y - 20);
+                }
+            }
+        }
+
+        private DrawingRectangle DrawLegendBelowChart(
+    DrawingGraphics g,
+    DrawingRectangle chartArea,
+    DrawingFont chartFont,
+    int legendHeight,
+    int topOffset,         // was: legendPad
+    int shiftRight = 0     // new: pixels to nudge right
+)
+        {
+            int lx = chartArea.X + shiftRight;              // ⬅ shove to the right
+            int ly = chartArea.Bottom + topOffset;          // ⬅ sits below x-axis labels
+            int lw = chartArea.Width - shiftRight;          // keep inside page width
+            int lh = legendHeight;
+
+            using var legendBg = new SolidBrush(System.Drawing.Color.FromArgb(248, 250, 252));
+            using var legendBorder = new System.Drawing.Pen(System.Drawing.Color.FromArgb(220, 224, 230), 1);
+            using var textBrush = new SolidBrush(ModernTheme.Ink);
+            using var legFont = new DrawingFont("Segoe UI", 9, DrawingFontStyle.Regular);
+
+            g.FillRectangle(legendBg, lx, ly, lw, lh);
+            g.DrawRectangle(legendBorder, lx, ly, lw, lh);
+
+            var items = new[]
+            {
+        ("PHQ-9",  ModernTheme.ChartBlue),
+        ("GAD-7",  ModernTheme.ChartGreen),
+        ("BDI-II", ModernTheme.ChartOrange),
+        ("PCL-5",  ModernTheme.ChartCyan),
+        ("Y-BOCS", ModernTheme.ChartPurple)
+    };
+
+            int itemW = lw / items.Length;
+            int cy = ly + (lh / 2) - 6;
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                int cx = lx + i * itemW + 14;
+                using var p = new System.Drawing.Pen(items[i].Item2, 3) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                g.DrawLine(p, cx, cy, cx + 22, cy);
+                g.DrawString(items[i].Item1, legFont, textBrush, cx + 28, cy - 8);
+            }
+
+            return new DrawingRectangle(lx, ly, lw, lh);
+        }
+
+
+        private DrawingRectangle DrawLegendBelowChart(
+    DrawingGraphics g, DrawingRectangle chartArea, DrawingFont chartFont,
+    int legendHeight, int legendPad)
+        {
+            int lx = chartArea.X;
+            int ly = chartArea.Bottom + legendPad;
+            int lw = chartArea.Width;
+            int lh = legendHeight;
+
+            using var legendBg = new SolidBrush(System.Drawing.Color.FromArgb(248, 250, 252));
+            using var legendBorder = new System.Drawing.Pen(System.Drawing.Color.FromArgb(220, 224, 230), 1);
+            using var textBrush = new SolidBrush(ModernTheme.Ink);
+
+            // background box
+            g.FillRectangle(legendBg, lx, ly, lw, lh);
+            g.DrawRectangle(legendBorder, lx, ly, lw, lh);
+
+            var items = new[]
+            {
+        ("PHQ-9",  ModernTheme.ChartBlue),
+        ("GAD-7",  ModernTheme.ChartGreen),
+        ("BDI-II", ModernTheme.ChartOrange),
+        ("PCL-5",  ModernTheme.ChartCyan),
+        ("Y-BOCS", ModernTheme.ChartPurple)
+    };
+
+            int itemW = lw / items.Length;
+            int cy = ly + (lh / 2) - 6; // center lines vertically
+
+            using var legFont = new DrawingFont("Segoe UI", 9, DrawingFontStyle.Regular);
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                int cx = lx + i * itemW + 14;
+                using var p = new System.Drawing.Pen(items[i].Item2, 3) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                g.DrawLine(p, cx, cy, cx + 22, cy);
+                g.DrawString(items[i].Item1, legFont, textBrush, cx + 28, cy - 8);
+            }
+
+            return new DrawingRectangle(lx, ly, lw, lh);
+        }
+
+
+        // CLEAN: Page 1 Header
+        private int DrawPage1Header_Clean(
+      DrawingGraphics g, string patientId, List<ScoreEntry> entries,
+      int margin, int currentY, int pageWidth, DrawingFont titleFont, DrawingFont bodyFont)
+        {
+            const int LOGO_NUDGE_UP = 12;
+            int headerHeight = 148;
+            using var headerBg = new SolidBrush(DrawingColor.FromArgb(234, 244, 250));
+            using var brandBrush = new SolidBrush(DrawingColor.FromArgb(43, 95, 117));
+            using var textBrush = new SolidBrush(DrawingColor.FromArgb(128, 128, 128));
+
+            g.FillRectangle(headerBg, 0, currentY, pageWidth, headerHeight);
+
+            int yHeaderLine = currentY + 20;
+
+            // Logo / title
+            int logoTargetH = 140;
+            if (TryLoadLogoBitmap(out var logoBmp))
+            {
+                using (logoBmp)
+                    DrawLogo(g, logoBmp, margin, yHeaderLine - LOGO_NUDGE_UP, logoTargetH);
+            }
+            else
+            {
+                g.DrawString("RECONNECT", titleFont, brandBrush, margin, yHeaderLine);
+            }
+
+            var summaryText = "Clinical Progress Summary";
+            var summarySize = g.MeasureString(summaryText, titleFont);
+            var summaryX = pageWidth - margin - summarySize.Width;
+            g.DrawString(summaryText, titleFont, brandBrush, summaryX, yHeaderLine);
+
+            // --- Put Patient ID BELOW the header band ---
+            const int GAP_BELOW_HEADER = 10;                        // ⬅ tweak this for more/less space
+            int yInfoLine = currentY + headerHeight + GAP_BELOW_HEADER;
+
+            var dateRange = entries.Any()
+                ? $"{entries.First().Date:yyyy-MM-dd} to {entries.Last().Date:yyyy-MM-dd}"
+                : "No data";
+            var infoText = $"Patient ID: {patientId}  |  Period: {dateRange}  |  Total Assessments: {entries.Count}";
+            g.DrawString(infoText, bodyFont, textBrush, margin, yInfoLine);
+
+            // Advance past the info line so the chart doesn't overlap
+            int infoH = (int)g.MeasureString(infoText, bodyFont).Height;
+            int blockBottom = yInfoLine + infoH + 6;                // small padding after info
+
+            return blockBottom;
+        }
+
+
+        private static bool TryLoadLogoBitmap(out DrawingBitmap logo)
+        {
+            logo = null;
+            try
+            {
+                // Use the same pack URI that works in your XAML
+                var uri = new Uri("pack://application:,,,/Images/Logo.png");
+                var sri = System.Windows.Application.GetResourceStream(uri);
+                if (sri != null)
+                {
+                    using var ms = new MemoryStream();
+                    sri.Stream.CopyTo(ms);
+                    ms.Position = 0;
+                    logo = new DrawingBitmap(ms);
+                    logo.SetResolution(300, 300); // High DPI for PDF
+                    return true;
+                }
+            }
+            catch
+            {
+                // If resource loading fails, fall back to text
+            }
+            return false;
+        }
+        private static void DrawLogo(DrawingGraphics g, DrawingBitmap bmp, int x, int y, int targetHeight)
+        {
+            float scale = targetHeight / (float)bmp.Height;
+            int w = (int)Math.Round(bmp.Width * scale);
+            g.DrawImage(bmp, new DrawingRectangle(x, y, w, targetHeight));
+        }
+
+        // CLEAN: Chart with proper X-axis and score labels
+        private int DrawChart_Clean(
+     DrawingGraphics g, List<ScoreEntry> entries,
+     int x, int y, int chartWidth, int chartHeight, DrawingFont chartFont)
+        {
+            if (!entries.Any())
+            {
+                using var textBrush = new SolidBrush(ModernTheme.Ink);
+                g.DrawString("No assessment data available for chart.", chartFont, textBrush, x, y);
+                return y + 50;
+            }
+
+            var plotMargin = 80;
+            var chartArea = new DrawingRectangle(
+                x + plotMargin, y + 40,
+                Math.Max(200, chartWidth - (plotMargin * 2)),
+                Math.Max(200, chartHeight - 100)); // More space for bottom labels
+
+            var minDate = entries.First().Date;
+            var maxDate = entries.Last().Date;
+            if (minDate == maxDate)
+            {
+                minDate = minDate.AddDays(-1);
+                maxDate = maxDate.AddDays(1);
+            }
+
+            var allScores = GetAllScores(entries);
+            if (!allScores.Any()) return y + 50;
+
+            double minScore = Math.Max(0, allScores.Min() - 5);
+            double maxScore = Math.Min(80, allScores.Max() + 10);
+            if (Math.Abs(maxScore - minScore) < 0.0001) maxScore = minScore + 1;
+
+            // Chart background
+            using var chartBg = new SolidBrush(ModernTheme.Card);
+            using var borderPen = new System.Drawing.Pen(ModernTheme.Line, 1);
+            g.FillRectangle(chartBg, chartArea);
+            g.DrawRectangle(borderPen, chartArea);
+
+            // Draw remission band
+            DrawRemissionBand(g, chartArea, minScore, maxScore, entries);
+
+            // Draw grid and axes
+            DrawGrid_Clean(g, chartArea, minScore, maxScore, entries, chartFont);
+
+            // Draw data series with score labels
+            DrawDataSeries_Clean(g, entries, chartArea, minScore, maxScore);
+
+            return chartArea.Bottom + 60; // Space for X-axis labels
+        }
+
+
+
+        // CLEAN: Grid with properly spaced X-axis
+        private void DrawGrid_Clean(
+      DrawingGraphics g, DrawingRectangle chartArea, double minScore, double maxScore,
+      List<ScoreEntry> entries, DrawingFont chartFont)
+        {
+            using var gridPen = new System.Drawing.Pen(DrawingColor.FromArgb(235, 238, 243), 1);
+            using var textBrush = new SolidBrush(ModernTheme.Muted);
+
+            double scoreRange = maxScore - minScore;
+
+            // Y grid (vertical lines for scores)
+            int ySteps = Math.Max(3, Math.Min(6, (int)Math.Ceiling(scoreRange / 10.0)));
+            for (int i = 0; i <= ySteps; i++)
+            {
+                float gy = (float)(chartArea.Y + (i * chartArea.Height / (double)ySteps));
+                g.DrawLine(gridPen, chartArea.X, gy, chartArea.Right, gy);
+                var val = maxScore - (i * scoreRange / ySteps);
+                g.DrawString(((int)Math.Round(val)).ToString(), chartFont, textBrush, chartArea.X - 35, gy - 8);
+            }
+
+            // FIXED: X grid with proper date label positioning
+            var assessmentDates = entries
+                .Select(e => e.Date.Date)
+                .Distinct()
+                .OrderBy(d => d)
+                .ToList();
+
+            if (assessmentDates.Count > 0)
+            {
+                for (int i = 0; i < assessmentDates.Count; i++)
+                {
+                    float gx = chartArea.X + (i * chartArea.Width / Math.Max(1, assessmentDates.Count - 1));
+
+                    if (assessmentDates.Count == 1)
+                        gx = chartArea.X + chartArea.Width / 2f;
+
+                    g.DrawLine(gridPen, gx, chartArea.Y, gx, chartArea.Bottom);
+
+                    // FIXED: Better positioned date labels with more space
+                    var dateLabel = assessmentDates[i].ToString("MM/dd");
+                    var labelSize = g.MeasureString(dateLabel, chartFont);
+                    float labelY = chartArea.Bottom + 16; // ⬅ INCREASED spacing from chart
+                    g.DrawString(dateLabel, chartFont, textBrush, gx - labelSize.Width/2, labelY);
+                }
+            }
+        }
+
+        // CLEAN: Data series with score labels on ALL points
+        private void DrawDataSeries_Clean(
+     DrawingGraphics g, List<ScoreEntry> entries,
+     DrawingRectangle chartArea, double minScore, double maxScore)
+        {
+            var seriesConfigs = new[]
+            {
+        (selector: (Func<ScoreEntry, int?>)(e => e.PHQ9), color: ModernTheme.ChartBlue, name: "PHQ-9"),
+        (selector: (Func<ScoreEntry, int?>)(e => e.GAD7), color: ModernTheme.ChartGreen, name: "GAD-7"),
+        (selector: (Func<ScoreEntry, int?>)(e => e.BDI2), color: ModernTheme.ChartOrange, name: "BDI-II"),
+        (selector: (Func<ScoreEntry, int?>)(e => e.PCL5), color: ModernTheme.ChartCyan, name: "PCL-5"),
+        (selector: (Func<ScoreEntry, int?>)(e => e.YBOCS), color: ModernTheme.ChartPurple, name: "Y-BOCS")
+    };
+
+            double scoreRange = maxScore - minScore;
+
+            // Get unique assessment dates for X positioning
+            var assessmentDates = entries.Select(e => e.Date.Date).Distinct().OrderBy(d => d).ToList();
+
+            foreach (var config in seriesConfigs)
+            {
+                var pts = new List<(DrawingPointF pt, int val, DateTime date)>();
+
+                // Build points for this series
+                foreach (var entry in entries)
+                {
+                    var score = config.selector(entry);
+                    if (!score.HasValue) continue;
+
+                    // Find X position based on date
+                    int dateIndex = assessmentDates.IndexOf(entry.Date.Date);
+                    float x = chartArea.X + (dateIndex * chartArea.Width / Math.Max(1, assessmentDates.Count - 1));
+
+                    if (assessmentDates.Count == 1)
+                        x = chartArea.X + chartArea.Width / 2f;
+
+                    var yn = (score.Value - minScore) / scoreRange;
+                    var y = chartArea.Bottom - (yn * chartArea.Height);
+
+                    pts.Add((new DrawingPointF(x, (float)y), score.Value, entry.Date));
+                }
+
+                if (pts.Count == 0) continue;
+
+                // Draw lines between points
+                using var pen = new System.Drawing.Pen(config.color, 3)
+                {
+                    StartCap = LineCap.Round,
+                    EndCap = LineCap.Round,
+                    LineJoin = LineJoin.Round
+                };
+
+                if (pts.Count > 1)
+                    g.DrawLines(pen, pts.Select(p => p.pt).ToArray());
+
+                // Draw points and labels
+                using var brush = new SolidBrush(config.color);
+                using var whitePen = new System.Drawing.Pen(DrawingColor.White, 2);
+                using var labelFont = new DrawingFont("Segoe UI", 8, DrawingFontStyle.Bold);
+                using var labelBrush = new SolidBrush(DrawingColor.FromArgb(50, 50, 50));
+
+                foreach (var p in pts)
+                {
+                    // Draw point
+                    g.FillEllipse(brush, p.pt.X - 6, p.pt.Y - 6, 12, 12);
+                    g.DrawEllipse(whitePen, p.pt.X - 6, p.pt.Y - 6, 12, 12);
+
+                    // Draw score label above point
+                    var scoreText = p.val.ToString();
+                    var textSize = g.MeasureString(scoreText, labelFont);
+                    g.DrawString(scoreText, labelFont, labelBrush, p.pt.X - textSize.Width/2, p.pt.Y - 20);
+                }
+            }
+        }
+
+        // CLEAN: Legend below chart
+        private int DrawLegend_Clean(DrawingGraphics g, int x, int y, int width)
+        {
+            var legendItems = new[]
+            {
+        ("PHQ-9", ModernTheme.ChartBlue),
+        ("GAD-7", ModernTheme.ChartGreen),
+        ("BDI-II", ModernTheme.ChartOrange),
+        ("PCL-5", ModernTheme.ChartCyan),
+        ("Y-BOCS", ModernTheme.ChartPurple)
+    };
+
+            using var legendFont = new DrawingFont("Segoe UI", 10);
+            using var blackBrush = new SolidBrush(DrawingColor.Black);
+
+            int itemSpacing = Math.Max(120, width / legendItems.Length);
+            int currentX = x + (width - (legendItems.Length * itemSpacing)) / 2; // Center the legend
+            const int legendHeight = 30;
+
+            foreach (var (label, color) in legendItems)
+            {
+                // Draw line sample
+                using var pen = new System.Drawing.Pen(color, 4);
+                g.DrawLine(pen, currentX, y + 10, currentX + 25, y + 10);
+
+                // Draw label
+                g.DrawString(label, legendFont, blackBrush, currentX + 30, y + 5);
+                currentX += itemSpacing;
+            }
+
+            return y + legendHeight;
+        }
+
+        // CLEAN: Summary panel with proper spacing
+        private int DrawSummaryPanel_Clean(
+      DrawingGraphics g, List<ScoreEntry> entries, int margin, int y,
+      int pageWidth, DrawingFont headerFont, DrawingFont bodyFont)
+        {
+            // FIXED: Better spacing system
+            const int PAD_X = 32;              // ⬅ INCREASED horizontal padding
+            const int PAD_Y = 28;              // ⬅ INCREASED vertical padding
+            const int TITLE_GAP = 20;          // ⬅ INCREASED gap after title
+            const int COL_GAP = 48;            // ⬅ INCREASED column gap
+            const int SUBHEAD_GAP = 18;        // ⬅ INCREASED gap under subheads
+            const int ROW_GAP = 16;            // ⬅ INCREASED vertical space between rows
+
+            int lineH = (int)Math.Ceiling(g.MeasureString("Ag", bodyFont).Height) + 8; // ⬅ INCREASED line height
+
+            var phqBase = entries.FirstOrDefault(e => e.PHQ9.HasValue);
+            var phqLast = entries.LastOrDefault(e => e.PHQ9.HasValue);
+            var bdiBase = entries.FirstOrDefault(e => e.BDI2.HasValue);
+            var bdiLast = entries.LastOrDefault(e => e.BDI2.HasValue);
+
+            bool hasPHQ = phqBase != null && phqLast != null;
+            bool hasBDI = bdiBase != null && bdiLast != null;
+
+            int titleH = (int)Math.Ceiling(g.MeasureString("Key Clinical Outcomes", headerFont).Height);
+            int colHeaderH = (int)Math.Ceiling(g.MeasureString("PHQ-9 Analysis", headerFont).Height) + SUBHEAD_GAP;
+
+            int rowsLeft = hasPHQ ? 3 : 1;
+            int rowsRight = hasBDI ? 3 : 1;
+            int leftBlockH = colHeaderH + rowsLeft * (lineH + ROW_GAP);
+            int rightBlockH = colHeaderH + rowsRight * (lineH + ROW_GAP);
+
+            int contentH = Math.Max(leftBlockH, rightBlockH);
+            int cardW = pageWidth - margin * 2;
+            int cardH = PAD_Y + titleH + TITLE_GAP + contentH + PAD_Y;
+
+            var cardRect = new DrawingRectangle(margin, y, cardW, cardH);
+            ModernTheme.DrawCard(g, cardRect);
+
+            using var titleBrush = new SolidBrush(ModernTheme.Brand);
+            using var textBrush = new SolidBrush(ModernTheme.Ink);
+            using var mutedBrush = new SolidBrush(ModernTheme.Muted);
+            using var successBrush = new SolidBrush(ModernTheme.Success);
+            using var dangerBrush = new SolidBrush(ModernTheme.Danger);
+            using var gridPen = new System.Drawing.Pen(ModernTheme.Line, 1);
+
+            int x0 = cardRect.X + PAD_X;
+            int y0 = cardRect.Y + PAD_Y;
+            g.DrawString("Key Clinical Outcomes", headerFont, titleBrush, x0, y0);
+
+            int contentTop = y0 + titleH + TITLE_GAP;
+            int innerW = cardRect.Width - PAD_X * 2;
+            int colW = (innerW - COL_GAP) / 2;
+
+            int leftX = x0;
+            int rightX = x0 + colW + COL_GAP;
+
+            g.DrawLine(gridPen, rightX - (COL_GAP / 2), contentTop, rightX - (COL_GAP / 2), cardRect.Bottom - PAD_Y);
+
+            // LEFT: PHQ-9 with proper spacing
+            int yL = contentTop;
+            g.DrawString("PHQ-9 Analysis", headerFont, titleBrush, leftX, yL);
+            yL += colHeaderH;
+
+            if (hasPHQ)
+            {
+                double imp = ((double)(phqBase!.PHQ9!.Value - phqLast!.PHQ9!.Value) / phqBase.PHQ9.Value) * 100.0;
+                bool resp = imp >= 50;
+
+                yL = DrawLabelValueRow(g, "Baseline:", $" {phqBase.PHQ9}    Latest: {phqLast.PHQ9}",
+                                       leftX, yL, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+
+                string respText = resp ? "YES (≥50%)" : "No (<50%)";
+                var respBrush = resp ? successBrush : dangerBrush;
+                yL = DrawLabelValueRow(g, "Response:", respText,
+                                       leftX, yL, colW, bodyFont, mutedBrush, respBrush, lineH, ROW_GAP);
+
+                yL = DrawLabelValueRow(g, "Improvement:", $"{imp:F1}%",
+                                       leftX, yL, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+            }
+            else
+            {
+                yL = DrawLabelValueRow(g, "PHQ-9:", "Insufficient data",
+                                       leftX, yL, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+            }
+
+            // RIGHT: BDI-II with proper spacing
+            int yR = contentTop;
+            g.DrawString("BDI-II Analysis", headerFont, titleBrush, rightX, yR);
+            yR += colHeaderH;
+
+            if (hasBDI)
+            {
+                bool rem = bdiLast!.BDI2!.Value <= 14;
+                double imp = ((double)(bdiBase!.BDI2!.Value - bdiLast.BDI2!.Value) / bdiBase.BDI2.Value) * 100.0;
+
+                yR = DrawLabelValueRow(g, "Baseline:", $" {bdiBase.BDI2}    Latest: {bdiLast.BDI2}",
+                                       rightX, yR, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+
+                string remText = rem ? "YES (≤14)" : "No (>14)";
+                var remBrush = rem ? successBrush : dangerBrush;
+                yR = DrawLabelValueRow(g, "Remission:", remText,
+                                       rightX, yR, colW, bodyFont, mutedBrush, remBrush, lineH, ROW_GAP);
+
+                yR = DrawLabelValueRow(g, "Improvement:", $"{imp:F1}%",
+                                       rightX, yR, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+            }
+            else
+            {
+                yR = DrawLabelValueRow(g, "BDI-II:", "Insufficient data",
+                                       rightX, yR, colW, bodyFont, mutedBrush, textBrush, lineH, ROW_GAP);
+            }
+
+            return cardRect.Bottom + 32; // ⬅ INCREASED gap after summary panel
+        }
+
+        // adds explicit extra vertical gap per row
+        private int DrawLabelValueRow(
+            DrawingGraphics g, string label, string value,
+            int x, int y, int colWidth,
+            DrawingFont font, SolidBrush labelBrush, SolidBrush valueBrush,
+            int lineHeight, int extraGap)
+        {
+            int labelW = (int)Math.Ceiling(g.MeasureString(label, font).Width);
+            int valueX = x + Math.Min(labelW + 10, colWidth / 2);
+
+            g.DrawString(label, font, labelBrush, x, y);
+            g.DrawString(value, font, valueBrush, valueX, y);
+
+            return y + lineHeight + extraGap; // ← extra breathing room
+        }
+
+
+
+        // ADD these supporting methods to your MainWindow class:
+
+        private void DrawRemissionBand(DrawingGraphics g, DrawingRectangle chartArea, double minScore, double maxScore, List<ScoreEntry> entries)
+        {
+            if (minScore <= 14 && entries.Any(e => e.BDI2.HasValue))
+            {
+                double scoreRange = maxScore - minScore;
+                var remissionY = (float)(chartArea.Bottom - ((14 - minScore) / scoreRange * chartArea.Height));
+                var bandHeight = Math.Max(0, chartArea.Bottom - remissionY);
+
+                if (bandHeight > 0)
+                {
+                    using var remissionBrush = new SolidBrush(DrawingColor.FromArgb(120, ModernTheme.RemissionBand));
+                    g.FillRectangle(remissionBrush, chartArea.X, remissionY, chartArea.Width, bandHeight);
+
+                    using var labelBrush = new SolidBrush(ModernTheme.Success);
+                    using var labelFont = ModernTheme.GetModernFont(9);
+                    g.DrawString("Remission Zone (BDI-II ≤ 14)", labelFont, labelBrush, chartArea.X + 10, remissionY - 20);
+                }
+            }
+        }
+
+     
+
+    
+
+
+
+
+
+        [SupportedOSPlatform("windows")]
+        private void DrawPage2Content(
+       DrawingGraphics g, string patientId, List<ScoreEntry> entries,
+       int pageWidth, int pageHeight, int margin, int yOffset = 0)
+        {
+            var page2Bottom = pageHeight - margin - 90 + yOffset; // Reserve space for footer
+            var currentY = margin + yOffset;
+
+            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
+
+            using var headerFont = new DrawingFont("Segoe UI", 16, DrawingFontStyle.Bold);
+            using var subHeaderFont = new DrawingFont("Segoe UI", 14, DrawingFontStyle.Bold);
+            using var bodyFont = new DrawingFont("Segoe UI", 12);
+            using var smallFont = new DrawingFont("Segoe UI", 11);
+
+            // Header
+            currentY = DrawPage2Header(g, patientId, margin, currentY, pageWidth, headerFont, bodyFont, reconnectBlue);
+
+            // Assessment table with fixed column widths
+            currentY = DrawFullAssessmentTable_Enhanced(
+                g, entries, margin, currentY, pageWidth, page2Bottom, smallFont, subHeaderFont);
+
+            currentY += 32; // More space after table
+
+            // FIXED: Ensure Clinical Notes section shows properly
+            if (currentY < page2Bottom - 100) // Only if we have reasonable space
+            {
+                DrawClinicalNotesSection_Enhanced(g, entries, margin, currentY, pageWidth, page2Bottom, subHeaderFont, bodyFont);
+            }
+
+            // Footer
+            DrawPageFooter(g, patientId, 2, pageWidth, pageHeight, margin);
+        }
+
+        private int DrawPage2Header(
+            DrawingGraphics g, string patientId, int margin, int currentY,
+            int pageWidth, DrawingFont headerFont, DrawingFont bodyFont, DrawingColor reconnectBlue)
+        {
+            using var blueBrush = new SolidBrush(reconnectBlue);
+            using var grayBrush = new SolidBrush(DrawingColor.DarkGray);
+
+            // Title
+            var title = $"Clinical Data Appendix - Patient {patientId}";
+            g.DrawString(title, headerFont, blueBrush, margin, currentY);
+            var titleH = (int)Math.Ceiling(g.MeasureString(title, headerFont).Height);
+            currentY += titleH + 12;          // ← space under the title
+
+            // Subtitle
+            var sub = "Complete assessment history and clinical notes";
+            g.DrawString(sub, bodyFont, grayBrush, margin, currentY);
+            var subH = (int)Math.Ceiling(g.MeasureString(sub, bodyFont).Height);
+            currentY += subH + 22;            // ← extra space before the first section
+
+            return currentY;
+        }
+
+       
+
+        // ✅ New footer method
+        private void DrawPageFooter(DrawingGraphics g, string patientId, int pageNo, int pageWidth, int pageHeight, int margin)
+        {
+            using var footerFont = new DrawingFont("Arial", 9);
+            using var grayBrush = new SolidBrush(DrawingColor.DimGray);
+
+            var text = $"{patientId} • {DateTime.Now:yyyy-MM-dd HH:mm} • Page {pageNo} of 2";
+            var textSize = g.MeasureString(text, footerFont);
+            var x = (pageWidth - textSize.Width) / 2;
+            var y = pageHeight - margin + 10;
+
+            g.DrawString(text, footerFont, grayBrush, x, y);
+        }
+
+       
+
+
+        // ✅ Updated button handler with proper dialog filters
+        private async void GenerateTwoPageReport_Click(object sender, RoutedEventArgs e)
         {
             var patientId = PatientSelector.Text?.Trim();
             if (string.IsNullOrWhiteSpace(patientId))
@@ -1077,42 +2167,53 @@ namespace PatientTrackerWPF
             {
                 Mouse.OverrideCursor = Cursors.Wait;
 
-                List<ScoreEntry> entries;
-
-                System.Diagnostics.Debug.WriteLine("Production mode: Using database data for report");
-
-                entries = await _dbContext.ScoreEntries
-                    .Where(e => e.PatientId == patientId)
-                    .OrderBy(e => e.Date)
-                    .ToListAsync();
+                var entries = await _dbContext.ScoreEntries
+       .AsNoTracking()
+       .Where(e => e.PatientId == patientId)
+       .OrderBy(e => e.Date)
+       .ToListAsync();
 
                 if (!entries.Any())
                 {
-                    MessageBox.Show($"No data available for patient {patientId} in database.");
+                    MessageBox.Show($"No data available for patient {patientId}.");
                     return;
                 }
 
-                // Create professional clinical report
-                var reportImage = CreateProfessionalClinicalReport(patientId, entries);
+                // Ask user for format preference
+                var formatChoice = MessageBox.Show(
+                    "Choose output format:\n\n" +
+                    "YES = PDF (recommended for printing)\n" +
+                    "NO = PNG images (for editing/sharing)\n" +
+                    "CANCEL = abort",
+                    "Report Format",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question);
 
-                // Save as PNG
+                if (formatChoice == MessageBoxResult.Cancel) return;
+
+                bool generatePdf = formatChoice == MessageBoxResult.Yes;
+
                 var dialog = new Microsoft.Win32.SaveFileDialog
                 {
-                    FileName = $"ReconnectClinicalReport_{patientId}_{DateTime.Now:yyyyMMdd_HHmm}.png",
-                    Filter = "PNG Image|*.png"
+                    FileName = $"Clinical_Report_{patientId}_{DateTime.Now:yyyyMMdd_HHmm}",
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
                 };
 
-                if (dialog.ShowDialog() == true)
+                // ✅ Set filter based on chosen format
+                if (generatePdf)
                 {
-                    reportImage.Save(dialog.FileName, ImageFormat.Png);
-                    reportImage.Dispose();
-
-                    MessageBox.Show($"Professional clinical report generated successfully!\n\nFile: {dialog.FileName}",
-                                   "Report Generated", MessageBoxButton.OK, MessageBoxImage.Information);
+                    dialog.Filter = "PDF Files|*.pdf|All Files|*.*";
+                    dialog.DefaultExt = "pdf";
                 }
                 else
                 {
-                    reportImage.Dispose();
+                    dialog.Filter = "PNG Images|*.png|All Files|*.*";
+                    dialog.DefaultExt = "png";
+                }
+
+                if (dialog.ShowDialog() == true)
+                {
+                    CreateTwoPageClinicalReport(patientId, entries, dialog.FileName, generatePdf);
                 }
             }
             catch (Exception ex)
@@ -1126,634 +2227,235 @@ namespace PatientTrackerWPF
             }
         }
 
-        [SupportedOSPlatform("windows")]
-        private DrawingBitmap CreateProfessionalClinicalReport(string patientId, List<ScoreEntry> entries)
+        private void SetupGraphicsQuality(DrawingGraphics g)
         {
-            // Calculate dynamic height based on actual data
-            int baseHeight = 800;  // Base height for header, chart, etc.
-            int rowHeight = 22;
-            int noteLineHeight = 40;  // Estimated height per note entry
-            int tableRows = entries.Count;  // ALL entries, not limited
-            int notesCount = entries.Count(e => !string.IsNullOrWhiteSpace(e.Note));
-
-            // Calculate total height needed
-            int tableHeight = tableRows * rowHeight + 100;  // +100 for headers
-            int notesHeight = notesCount * noteLineHeight + 100;  // +100 for section header
-            int totalHeight = baseHeight + tableHeight + notesHeight + 200;  // +200 for footer and padding
-
-            // Report dimensions - width stays same, height is dynamic
-            const int width = 1200;
-            int height = Math.Max(1600, totalHeight);  // Minimum 1600, but can grow
-
-            const int marginLeft = 50;
-            const int sectionSpacing = 30;
-            const int headerHeight = 65;
-            const int headerBackgroundHeight = 100;
-            const int headerBottomMargin = 20;
-            const double tableWidthRatio = 0.75;
-
-            var bitmap = new DrawingBitmap(width, height);
-            using var g = DrawingGraphics.FromImage(bitmap);
-
-            // High quality rendering
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.AntiAlias;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            // Background
+            // ✅ FIXED: Better for PNG/PDF bitmaps - crisp text instead of smudgy ClearType
+            g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
+
             g.Clear(DrawingColor.White);
-
-            // Fonts - adjusted sizes for better fit
-            var titleFont = new DrawingFont("Arial", 14, DrawingFontStyle.Bold);
-            var subtitleFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
-            var headerFont = new DrawingFont("Arial", 14, DrawingFontStyle.Bold);
-            var subHeaderFont = new DrawingFont("Arial", 11, DrawingFontStyle.Bold);
-            var bodyFont = new DrawingFont("Arial", 10);
-            var smallFont = new DrawingFont("Arial", 8);
-            var cellFont = new DrawingFont("Arial", 8.5f);
-            var tableHeaderFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
-            var noteDateFont = new DrawingFont("Arial", 9, DrawingFontStyle.Bold);
-            var noteTextFont = new DrawingFont("Arial", 9);
-
-            // Colors
-            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
-            var lightBlue = DrawingColor.FromArgb(230, 243, 255);
-            var darkGray = DrawingColor.FromArgb(64, 64, 64);
-            var lightGray = DrawingColor.FromArgb(240, 240, 240);
-
-            var currentY = 40;
-
-            // HEADER SECTION
-            using (var headerBrush = new SolidBrush(reconnectBlue))
-            using (var headerRect = new SolidBrush(lightBlue))
-            {
-                // Header background
-                g.FillRectangle(headerRect, 0, 0, width, headerBackgroundHeight);
-                g.FillRectangle(headerBrush, 0, 0, width, headerHeight);
-
-                const string brandText = "RECONNECT";
-                const int brandX = marginLeft - 5;
-                const int brandY = 15;
-
-                g.DrawString(brandText, titleFont, DrawingBrushes.White, brandX, brandY);
-
-                var brandWidth = g.MeasureString(brandText, titleFont).Width;
-                g.DrawString(" MENTAL HEALTH", subtitleFont, DrawingBrushes.LightGray,
-                            brandX + brandWidth, brandY + 2);
-
-                // Report title
-                g.DrawString("Clinical Progress Report", headerFont, DrawingBrushes.White, width - 400, 15);
-                g.DrawString("Mental Health Assessment Report", bodyFont, DrawingBrushes.LightGray, width - 400, 40);
-            }
-
-            currentY = headerBackgroundHeight + headerBottomMargin;
-
-            // PATIENT INFO SECTION
-            g.DrawString($"Patient ID: {patientId}", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
-            currentY += 30;
-            g.DrawString($"Report Generated: {DateTime.Now:MMMM dd, yyyy h:mm tt}", bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
-            currentY += 25;
-            g.DrawString($"Assessment Period: {entries.First().Date:yyyy-MM-dd} to {entries.Last().Date:yyyy-MM-dd}",
-                        bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
-            currentY += 20;
-            g.DrawString($"Total Assessments: {entries.Count}", bodyFont, new SolidBrush(darkGray), marginLeft, currentY);
-            currentY += sectionSpacing + 10;
-
-            // DATA TABLE SECTION - NOW SHOWS ALL DATA
-            g.DrawString($"Complete Assessment History ({entries.Count} records)", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
-            currentY += 30;
-
-            // Create table showing ALL entries
-            var tableWidth = (int)((width - 100) * tableWidthRatio);
-            var tableY = CreateCompleteDataTable(g, entries, marginLeft, currentY, tableWidth, cellFont, tableHeaderFont, rowHeight);
-            currentY = tableY + 35;
-
-            // PROGRESS CHART SECTION
-            g.DrawString($"Progress Track: {entries.First().Date:yyyy-MM-dd} to {entries.Last().Date:yyyy-MM-dd}",
-                        headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
-            currentY += 25;
-
-            // Create progress chart with legend at bottom
-            currentY = CreateProgressChart(g, entries, marginLeft, currentY, width - 100, 400);
-            currentY += 20;
-
-            // TREATMENT NOTES SECTION - NOW SHOWS ALL NOTES
-            g.DrawString($"Complete Treatment Notes History", headerFont, new SolidBrush(reconnectBlue), marginLeft, currentY);
-            currentY += 25;
-
-            var allNotes = entries
-                .Where(e => !string.IsNullOrWhiteSpace(e.Note))
-                .OrderBy(e => e.Date)  // Changed to chronological order
-                .ToList();
-
-            if (allNotes.Any())
-            {
-                g.DrawString($"Total notes: {allNotes.Count}", smallFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
-                currentY += 20;
-
-                var spaceWidth = g.MeasureString(" ", noteTextFont).Width;
-
-                foreach (var entry in allNotes)
-                {
-                    // Check if we're getting close to the bottom - extend if needed
-                    if (currentY > height - 100)
-                    {
-                        // We've run out of space - this shouldn't happen with dynamic height
-                        // but just in case, break here
-                        g.DrawString($"... and {allNotes.Count - allNotes.IndexOf(entry)} more notes",
-                                    noteTextFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
-                        break;
-                    }
-
-                    // Date header
-                    g.DrawString($"• {entry.Date:yyyy-MM-dd}:", noteDateFont,
-                                new SolidBrush(reconnectBlue), marginLeft + 20, currentY);
-                    currentY += 16;
-
-                    // Wrapped note text
-                    var noteText = entry.Note;
-                    var maxWidth = width - 140;
-                    var wrappedText = WrapTextOptimized(noteText, noteTextFont, maxWidth, g, spaceWidth);
-
-                    foreach (var line in wrappedText)
-                    {
-                        g.DrawString($"  {line}", noteTextFont, new SolidBrush(darkGray), marginLeft + 40, currentY);
-                        currentY += 18;
-                    }
-                    currentY += 5; // Space between notes
-                }
-            }
-            else
-            {
-                g.DrawString("No treatment notes available.", noteTextFont, new SolidBrush(darkGray), marginLeft + 20, currentY);
-                currentY += 20;
-            }
-
-            // FOOTER - Position at bottom of actual content, not fixed position
-            currentY += 40;  // Add some space before footer
-            using (var footerBrush = new SolidBrush(lightGray))
-            {
-                g.FillRectangle(footerBrush, 0, currentY - 10, width, 70);
-                g.DrawString("This report is generated by Reconnect Mental Health Assessment System",
-                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 10);
-                g.DrawString($"Report ID: RPT-{patientId}-{DateTime.Now:yyyyMMddHHmm}",
-                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 25);
-                g.DrawString($"Page contains {entries.Count} assessment records and {allNotes.Count} clinical notes",
-                            smallFont, new SolidBrush(darkGray), marginLeft, currentY + 40);
-            }
-
-            // Cleanup all fonts
-            titleFont.Dispose();
-            subtitleFont.Dispose();
-            headerFont.Dispose();
-            subHeaderFont.Dispose();
-            bodyFont.Dispose();
-            smallFont.Dispose();
-            cellFont.Dispose();
-            tableHeaderFont.Dispose();
-            noteDateFont.Dispose();
-            noteTextFont.Dispose();
-
-            return bitmap;
         }
 
-        // New method to create table with ALL data
-        private int CreateCompleteDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth,
-                                      DrawingFont cellFont, DrawingFont headerFont, int rowHeight)
+        private int DrawFullAssessmentTable_Enhanced(
+      DrawingGraphics g, List<ScoreEntry> entries, int margin,
+      int currentY, int pageWidth, int pageBottom,
+      DrawingFont cellFont, DrawingFont subHeaderFont)
         {
-            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
-            var lightGray = DrawingColor.FromArgb(240, 240, 240);
-            var subtleGray = DrawingColor.FromArgb(220, 220, 220);
-
-            // Show ALL entries, not limited
-            var tableEntries = entries.OrderBy(e => e.Date).ToList();  // Chronological order
-
-            // Column setup with proper width distribution
-            var columns = new[] { "Date", "PHQ-9", "GAD-7", "BDI-II", "PCL-5", "Y-BOCS" };
-            var baseColWidth = tableWidth / columns.Length;
-            var remainder = tableWidth % columns.Length;
-
-            var headerRowHeight = rowHeight + 4;
-            var currentY = y;
-
-            // Create reusable brushes and pens outside the loop
-            using var altRowBrush = new SolidBrush(lightGray);
-            using var separatorPen = new System.Drawing.Pen(subtleGray, 1);
-            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
-            using var whitePen = new System.Drawing.Pen(DrawingColor.White, 1);
-            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
+            // Colors & pens
+            using var blueBrush = new SolidBrush(DrawingColor.FromArgb(43, 95, 117));
             using var blackBrush = new SolidBrush(DrawingColor.Black);
+            using var mutedBrush = new SolidBrush(DrawingColor.FromArgb(130, 130, 130)); // slightly lighter
+            using var headerBg = new SolidBrush(DrawingColor.FromArgb(234, 244, 250));
+            using var altRowBrush = new SolidBrush(DrawingColor.FromArgb(248, 250, 252));
+            using var gridPen = new System.Drawing.Pen(DrawingColor.FromArgb(225, 229, 235), 1); // light
+            using var headerPen = new System.Drawing.Pen(DrawingColor.FromArgb(210, 214, 220), 1);
 
-            // Draw header
-            using (var headerBrush = new SolidBrush(reconnectBlue))
+            using var headerFont = new DrawingFont("Segoe UI", 13, DrawingFontStyle.Bold);
+            using var dataFont = new DrawingFont("Segoe UI", 12);
+
+            // Density (switch to true if you ever want it tighter)
+            const bool COMFORTABLE = true;
+
+            // Layout constants (more airy)
+            int HEADER_H = COMFORTABLE ? 44 : 36;
+            int ROW_H = COMFORTABLE ? 44 : 34;
+            int ROW_GAP = COMFORTABLE ? 4 : 2;
+            int CELL_PAD_X = 12;
+            int TITLE_GAP = COMFORTABLE ? 26 : 18;
+            int AFTER_HEAD = COMFORTABLE ? 8 : 4;
+
+            // Optional: drop columns that are entirely empty to reduce clutter
+            bool omitEmptyColumns = true;
+
+            // Build columns dynamically
+            var cols = new List<(string Label, Func<ScoreEntry, string> Get, bool RightAlign)>
+    {
+        ("Date",   e => e.Date.ToString("yyyy-MM-dd"), false),
+        ("PHQ-9",  e => e.PHQ9?.ToString() ?? "—",     true),
+        ("GAD-7",  e => e.GAD7?.ToString() ?? "—",     true),
+        ("BDI-II", e => e.BDI2?.ToString() ?? "—",     true),
+        ("PCL-5",  e => e.PCL5?.ToString() ?? "—",     true),
+        ("Y-BOCS", e => e.YBOCS?.ToString() ?? "—",    true)
+    };
+
+            if (omitEmptyColumns)
             {
-                g.FillRectangle(headerBrush, x, currentY, tableWidth, headerRowHeight);
-
-                var currentX = x;
-                for (int i = 0; i < columns.Length; i++)
-                {
-                    var colWidth = baseColWidth + (i == columns.Length - 1 ? remainder : 0);
-
-                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
-                                currentX + 8, currentY + 6);
-
-                    if (i < columns.Length - 1)
-                    {
-                        g.DrawLine(whitePen, currentX + colWidth, currentY,
-                                  currentX + colWidth, currentY + headerRowHeight);
-                    }
-
-                    currentX += colWidth;
-                }
+                bool allPclEmpty = entries.Count == 0 || entries.All(x => x.PCL5  == null);
+                bool allYbocsEmpty = entries.Count == 0 || entries.All(x => x.YBOCS == null);
+                if (allPclEmpty) cols.RemoveAll(c => c.Label == "PCL-5");
+                if (allYbocsEmpty) cols.RemoveAll(c => c.Label == "Y-BOCS");
             }
-            currentY += headerRowHeight;
 
-            // Draw ALL data rows
-            for (int row = 0; row < tableEntries.Count; row++)
+            // Section title
+            const string sectionTitle = "Complete Assessment History";
+            g.DrawString(sectionTitle, subHeaderFont, blueBrush, margin, currentY);
+            var titleH = (int)Math.Ceiling(g.MeasureString(sectionTitle, subHeaderFont).Height);
+            currentY += titleH + TITLE_GAP;
+
+            int tableWidth = pageWidth - (margin * 2);
+            int dateColWidth = 200; // wider date column
+            int colGap = 8;         // small visual gap; we won't draw vertical lines
+
+            // Compute widths
+            int nonDateCols = cols.Count - 1;
+            int scoreArea = tableWidth - dateColWidth - (nonDateCols * colGap);
+            int scoreW = nonDateCols > 0 ? Math.Max(110, scoreArea / nonDateCols) : 0;
+
+            // Header background
+            var headerRect = new DrawingRectangle(margin, currentY, tableWidth, HEADER_H);
+            g.FillRectangle(headerBg, headerRect);
+            g.DrawLine(headerPen, margin, currentY + HEADER_H - 1, margin + tableWidth, currentY + HEADER_H - 1);
+
+            // Header labels (center for headers)
+            int headX = margin;
+            for (int i = 0; i < cols.Count; i++)
             {
-                var entry = tableEntries[row];
-                var isAlternate = row % 2 == 1;
+                int colW = (i == 0) ? dateColWidth : scoreW;
+                var size = g.MeasureString(cols[i].Label, headerFont);
+                float hx = headX + (colW - size.Width) / 2f;
+                float hy = currentY + (HEADER_H - size.Height) / 2f;
+                g.DrawString(cols[i].Label, headerFont, blueBrush, hx, hy);
+                headX += colW + (i < cols.Count - 1 ? colGap : 0);
+            }
 
-                // Alternate row background
-                if (isAlternate)
-                {
-                    g.FillRectangle(altRowBrush, x, currentY, tableWidth, rowHeight);
-                }
+            currentY += HEADER_H + AFTER_HEAD;
 
-                // Data values
-                var values = new string[]
-                {
-            entry.Date.ToString("yyyy-MM-dd"),
-            entry.PHQ9?.ToString() ?? "—",
-            entry.GAD7?.ToString() ?? "—",
-            entry.BDI2?.ToString() ?? "—",
-            entry.PCL5?.ToString() ?? "—",
-            entry.YBOCS?.ToString() ?? "—"
-                };
+            // Rows
+            int rowsDrawn = 0;
+            for (int r = 0; r < entries.Count; r++)
+            {
+                int required = ROW_H + ROW_GAP;
+                if (currentY + required > pageBottom - 80) break; // leave space for footnotes, etc.
+
+                var rowRect = new DrawingRectangle(margin, currentY, tableWidth, ROW_H);
+
+                // Zebra background (start with light on first visible row)
+                if (r % 2 == 0) g.FillRectangle(altRowBrush, rowRect);
+
+                // Horizontal separators only (clean look)
+                g.DrawLine(gridPen, margin, currentY + ROW_H, margin + tableWidth, currentY + ROW_H);
 
                 // Draw cells
-                var currentX = x;
-                for (int i = 0; i < values.Length; i++)
+                int x = margin;
+                for (int c = 0; c < cols.Count; c++)
                 {
-                    var colWidth = baseColWidth + (i == values.Length - 1 ? remainder : 0);
+                    int colW = (c == 0) ? dateColWidth : scoreW;
+                    string val = cols[c].Get(entries[r]);
+                    var size = g.MeasureString(val, dataFont);
 
-                    g.DrawString(values[i], cellFont, blackBrush,
-                                currentX + 8, currentY + 4);
+                    // Left for date; right for numbers
+                    float tx = cols[c].RightAlign
+                        ? x + colW - CELL_PAD_X - size.Width
+                        : x + CELL_PAD_X;
 
-                    if (i < values.Length - 1)
-                    {
-                        g.DrawLine(lightGrayPen, currentX + colWidth, currentY,
-                                  currentX + colWidth, currentY + rowHeight);
-                    }
+                    float ty = currentY + (ROW_H - size.Height) / 2f;
 
-                    currentX += colWidth;
+                    // Muted dash for missing values
+                    var brush = (val == "—") ? mutedBrush : blackBrush;
+                    g.DrawString(val, dataFont, brush, tx, ty);
+
+                    x += colW + (c < cols.Count - 1 ? colGap : 0);
                 }
 
-                // Draw row separator
-                g.DrawLine(separatorPen, x, currentY + rowHeight,
-                          x + tableWidth, currentY + rowHeight);
-
-                currentY += rowHeight;
+                currentY += ROW_H + ROW_GAP;
+                rowsDrawn++;
             }
 
-            // Draw table border
-            g.DrawRectangle(grayPen, x, y, tableWidth, currentY - y);
-
-            // Add summary text below table
-            currentY += 10;
-            using (var summaryFont = new DrawingFont("Arial", 8, DrawingFontStyle.Italic))
+            // (Optional) you can draw a note if columns were omitted
+            if (omitEmptyColumns)
             {
-                g.DrawString($"Table shows all {tableEntries.Count} assessment records in chronological order",
-                            summaryFont, new SolidBrush(DrawingColor.DarkGray), x, currentY);
+                string note = "Columns with no recorded values were omitted.";
+                var size = g.MeasureString(note, cellFont);
+                g.DrawString(note, cellFont, mutedBrush, margin, currentY + 6);
+                currentY += (int)size.Height + 10;
             }
-
-            return currentY + 10;
-        }
-
-        // Optimized text wrapping with cached space width
-        private List<string> WrapTextOptimized(string text, DrawingFont font, int maxWidth, DrawingGraphics g, float spaceWidth)
-        {
-            var lines = new List<string>();
-            var words = text.Split(' ');
-            var currentLine = "";
-            var currentWidth = 0f;
-
-            foreach (var word in words)
-            {
-                var wordWidth = g.MeasureString(word, font).Width;
-                var testWidth = currentWidth == 0 ? wordWidth : currentWidth + spaceWidth + wordWidth;
-
-                if (testWidth > maxWidth && !string.IsNullOrEmpty(currentLine))
-                {
-                    lines.Add(currentLine);
-                    currentLine = word;
-                    currentWidth = wordWidth;
-                }
-                else
-                {
-                    if (string.IsNullOrEmpty(currentLine))
-                    {
-                        currentLine = word;
-                        currentWidth = wordWidth;
-                    }
-                    else
-                    {
-                        currentLine += " " + word;
-                        currentWidth = testWidth;
-                    }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(currentLine))
-            {
-                lines.Add(currentLine);
-            }
-
-            return lines;
-        }
-
-        private int CreateDataTable(DrawingGraphics g, List<ScoreEntry> entries, int x, int y, int tableWidth,
-                            int maxRows, DrawingFont cellFont, DrawingFont headerFont, int rowHeight)
-        {
-            var reconnectBlue = DrawingColor.FromArgb(43, 95, 117);
-            var lightGray = DrawingColor.FromArgb(240, 240, 240);
-            var subtleGray = DrawingColor.FromArgb(220, 220, 220);
-
-            // Take most recent entries for the table
-            var tableEntries = entries.TakeLast(maxRows).ToList();
-
-            // Column setup with proper width distribution
-            var columns = new[] { "Date", "PHQ-9", "GAD-7", "BDI-II", "PCL-5", "Y-BOCS" };
-            var baseColWidth = tableWidth / columns.Length;
-            var remainder = tableWidth % columns.Length;
-
-            var headerRowHeight = rowHeight + 4;
-            var currentY = y;
-
-            // FIXED: Create new pens instead of using system pens
-            using var altRowBrush = new SolidBrush(lightGray);
-            using var separatorPen = new System.Drawing.Pen(subtleGray, 1);
-            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
-            using var whitePen = new System.Drawing.Pen(DrawingColor.White, 1);
-            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
-            using var blackBrush = new SolidBrush(DrawingColor.Black);
-
-            // Draw header
-            using (var headerBrush = new SolidBrush(reconnectBlue))
-            {
-                g.FillRectangle(headerBrush, x, currentY, tableWidth, headerRowHeight);
-
-                var currentX = x;
-                for (int i = 0; i < columns.Length; i++)
-                {
-                    // Add remainder pixels to the last column for perfect fit
-                    var colWidth = baseColWidth + (i == columns.Length - 1 ? remainder : 0);
-
-                    g.DrawString(columns[i], headerFont, DrawingBrushes.White,
-                                currentX + 8, currentY + 6);
-
-                    // Draw column separator with new pen
-                    if (i < columns.Length - 1)
-                    {
-                        g.DrawLine(whitePen, currentX + colWidth, currentY,
-                                  currentX + colWidth, currentY + headerRowHeight);
-                    }
-
-                    currentX += colWidth;
-                }
-            }
-            currentY += headerRowHeight;
-
-            // Draw data rows
-            for (int row = 0; row < tableEntries.Count; row++)
-            {
-                var entry = tableEntries[row];
-                var isAlternate = row % 2 == 1;
-
-                // Alternate row background
-                if (isAlternate)
-                {
-                    g.FillRectangle(altRowBrush, x, currentY, tableWidth, rowHeight);
-                }
-
-                // Data values with ISO 8601 date format
-                var values = new string[]
-                {
-            entry.Date.ToString("yyyy-MM-dd"),
-            entry.PHQ9?.ToString() ?? "—",
-            entry.GAD7?.ToString() ?? "—",
-            entry.BDI2?.ToString() ?? "—",
-            entry.PCL5?.ToString() ?? "—",
-            entry.YBOCS?.ToString() ?? "—"
-                };
-
-                // Draw cells with proper column width distribution
-                var currentX = x;
-                for (int i = 0; i < values.Length; i++)
-                {
-                    var colWidth = baseColWidth + (i == values.Length - 1 ? remainder : 0);
-
-                    g.DrawString(values[i], cellFont, blackBrush,
-                                currentX + 8, currentY + 4);
-
-                    // Draw column separator
-                    if (i < values.Length - 1)
-                    {
-                        g.DrawLine(lightGrayPen, currentX + colWidth, currentY,
-                                  currentX + colWidth, currentY + rowHeight);
-                    }
-
-                    currentX += colWidth;
-                }
-
-                // Draw subtle row separator
-                g.DrawLine(separatorPen, x, currentY + rowHeight,
-                          x + tableWidth, currentY + rowHeight);
-
-                currentY += rowHeight;
-            }
-
-            // Draw table border with new pen
-            g.DrawRectangle(grayPen, x, y, tableWidth, currentY - y);
 
             return currentY;
         }
-        private int CreateProgressChart(DrawingGraphics g, List<ScoreEntry> entries,
-                                        int x, int y, int chartWidth, int chartHeight)
+
+
+        // UPDATED: Clinical Notes with enhanced formatting
+        private void DrawClinicalNotesSection_Enhanced(
+            DrawingGraphics g, List<ScoreEntry> entries, int margin, int currentY,
+            int pageWidth, int pageBottom, DrawingFont subHeaderFont, DrawingFont bodyFont)
         {
-            if (!entries.Any()) return y + 50;
+            using var titleBrush = new SolidBrush(DrawingColor.FromArgb(43, 95, 117));
+            using var cardBg = new SolidBrush(DrawingColor.FromArgb(248, 250, 252));
+            using var borderPen = new System.Drawing.Pen(DrawingColor.FromArgb(220, 224, 230), 1);
+            using var dateBrush = new SolidBrush(DrawingColor.FromArgb(70, 70, 70));
+            using var textBrush = new SolidBrush(DrawingColor.Black);
+            using var notesBodyFont = new DrawingFont("Segoe UI", 9);     // ⬅ SMALLER than bodyFont
+            using var notesTitleFont = new DrawingFont("Segoe UI", 11, DrawingFontStyle.Bold); // ⬅ SMALLER header
 
-            // Keep inner plot area sane even if chartHeight is small
-            var innerH = Math.Max(120, chartHeight - 100);
-            var chartArea = new DrawingRectangle(x + 60, y + 40, chartWidth - 120, innerH);
+            const int CARD_PAD = 25; // More padding
+            const int CARD_GAP_Y = 20; // More gap between cards
+            const int SECTION_GAP = 32; // More section gap
 
-            using var whiteBrush = new SolidBrush(DrawingColor.White);
-            using var grayPen = new System.Drawing.Pen(DrawingColor.Gray, 1);
-            using var lightGrayPen = new System.Drawing.Pen(DrawingColor.LightGray, 1);
-            using var blackBrush = new SolidBrush(DrawingColor.Black);
-            using var arialFont8 = new DrawingFont("Arial", 8);
+            // Clinical Notes header
+            const string notesTitle = "Clinical Notes";
+            g.DrawString(notesTitle, subHeaderFont, titleBrush, margin, currentY);
+            var titleH = (int)Math.Ceiling(g.MeasureString(notesTitle, subHeaderFont).Height);
+            currentY += titleH + SECTION_GAP;
 
-            g.FillRectangle(whiteBrush, chartArea);
-            g.DrawRectangle(grayPen, chartArea);
+            var notesEntries = entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.Note))
+                .OrderBy(e => e.Date)
+                .ToList();
 
-            // Build range
-            var allScores = new List<int>();
-            foreach (var e in entries)
+            if (!notesEntries.Any())
             {
-                if (e.PHQ9.HasValue) allScores.Add(e.PHQ9.Value);
-                if (e.GAD7.HasValue) allScores.Add(e.GAD7.Value);
-                if (e.BDI2.HasValue) allScores.Add(e.BDI2.Value);
-                if (e.PCL5.HasValue) allScores.Add(e.PCL5.Value);
-                if (e.YBOCS.HasValue) allScores.Add(e.YBOCS.Value);
+                g.DrawString("No clinical notes recorded for this patient.", bodyFont, dateBrush, margin, currentY);
+                return;
             }
 
-            double minScore = allScores.Any() ? Math.Max(0, allScores.Min() - 5) : 0;
-            double maxScore = allScores.Any() ? Math.Min(80, allScores.Max() + 10) : 80;
+            // Show summary first
+            g.DrawString($"Total clinical notes: {notesEntries.Count}", bodyFont, dateBrush, margin, currentY);
+            currentY += 60; // More space after summary
 
-            // ✅ avoid zero range (flat line)
-            if (Math.Abs(maxScore - minScore) < 0.0001)
-                maxScore = minScore + 1;
+            // Note cards with enhanced formatting
+            int maxWidth = pageWidth - (margin * 2);
+            int layoutTextWidth = maxWidth - (CARD_PAD * 2);
 
-            double scoreRange = maxScore - minScore;
-
-            // ✅ grid steps: at least 1
-            int gridSteps = Math.Max(1, Math.Min(8, (int)Math.Ceiling(scoreRange / 10.0)));
-
-            for (int i = 0; i <= gridSteps; i++)
+            int notesShown = 0;
+            foreach (var entry in notesEntries)
             {
-                var gridY = (float)(chartArea.Y + (i * chartArea.Height / (double)gridSteps));
-                g.DrawLine(lightGrayPen, chartArea.X, gridY, chartArea.Right, gridY);
+                // Format as: YYYY-MM-DD: <note text>
+                var formattedNote = $"{entry.Date:yyyy-MM-dd}: {entry.Note}";
 
-                var value = maxScore - (i * scoreRange / gridSteps);
-                g.DrawString(((int)Math.Round(value)).ToString(), arialFont8, blackBrush,
-                             chartArea.X - 30, gridY - 6);
-            }
+                var textSize = g.MeasureString(formattedNote, bodyFont, new SizeF(layoutTextWidth, 1000));
+                int cardHeight = Math.Max(70, (int)Math.Ceiling(textSize.Height) + (CARD_PAD * 2) + 8); // More height
 
-            // vertical grid
-            for (int i = 0; i <= 10; i++)
-            {
-                var gridX = chartArea.X + (i * chartArea.Width / 10.0);
-                g.DrawLine(lightGrayPen, (float)gridX, chartArea.Y, (float)gridX, chartArea.Bottom);
-            }
-
-            // series
-            PlotAssessmentLineFixed(g, entries, chartArea, e => e.PHQ9, DrawingColor.Blue, "PHQ-9", minScore, maxScore);
-            PlotAssessmentLineFixed(g, entries, chartArea, e => e.GAD7, DrawingColor.Green, "GAD-7", minScore, maxScore);
-            PlotAssessmentLineFixed(g, entries, chartArea, e => e.BDI2, DrawingColor.Orange, "BDI-II", minScore, maxScore);
-            PlotAssessmentLineFixed(g, entries, chartArea, e => e.PCL5, DrawingColor.DarkCyan, "PCL-5", minScore, maxScore);
-            PlotAssessmentLineFixed(g, entries, chartArea, e => e.YBOCS, DrawingColor.Purple, "Y-BOCS", minScore, maxScore);
-
-            // bottom elements
-            var currentBottomY = chartArea.Bottom;
-
-            int dateStep = Math.Max(1, entries.Count / 6);
-            for (int i = 0; i < entries.Count; i += dateStep)
-            {
-                var ptX = chartArea.X + (i * chartArea.Width / Math.Max(1.0, entries.Count - 1));
-                g.DrawString(entries[i].Date.ToString("dd-MMM"), arialFont8, blackBrush,
-                             (float)ptX - 20, currentBottomY + 10);
-            }
-            currentBottomY += 25;
-
-            // ✅ FIXED: Use the actual return value from legend method
-            currentBottomY = DrawChartLegendHorizontal(g, chartArea.X, currentBottomY + 15, chartArea.Width);
-
-            return currentBottomY + 10; // padding
-        }
-
-        private int DrawChartLegendHorizontal(DrawingGraphics g, int x, int y, int width)
-        {
-            var legendItems = new[]
-            {
-        ("PHQ-9", DrawingColor.Blue),
-        ("GAD-7", DrawingColor.Green),
-        ("BDI-II", DrawingColor.Orange),
-        ("PCL-5", DrawingColor.DarkCyan),
-        ("Y-BOCS", DrawingColor.Purple)
-    };
-
-            // Guard against zero width
-            var safeWidth = Math.Max(300, width);
-            var itemWidth = safeWidth / legendItems.Length;
-            var currentX = x;
-            const int legendHeight = 20;
-
-            using (var arialFont = new DrawingFont("Arial", 9))
-            using (var blackBrush = new SolidBrush(DrawingColor.Black))
-            {
-                foreach (var (label, color) in legendItems)
+                if (currentY + cardHeight > pageBottom - 50)
                 {
-                    // Draw line sample
-                    using (var pen = new System.Drawing.Pen(color, 3))
+                    var remaining = notesEntries.Count - notesShown;
+                    if (remaining > 0)
                     {
-                        g.DrawLine(pen, currentX, y, currentX + 20, y);
+                        g.DrawString($"({remaining} additional notes omitted due to page space)", bodyFont, dateBrush, margin, currentY);
                     }
-
-                    // Draw label with bounds checking
-                    var labelX = Math.Min(currentX + 25, x + safeWidth - 50); // Prevent overflow
-                    g.DrawString(label, arialFont, blackBrush, labelX, y - 5);
-                    currentX += itemWidth;
+                    break;
                 }
-            }
 
-            return y + legendHeight; // Return actual bottom position
-        }
-        private void PlotAssessmentLineFixed(DrawingGraphics g, List<ScoreEntry> entries, DrawingRectangle chartArea,
-                                 Func<ScoreEntry, int?> scoreSelector, DrawingColor color,
-                                 string label, double minScore, double maxScore)
-        {
-            var points = new List<DrawingPointF>();
-            var scoreRange = maxScore - minScore;
+                var cardRect = new DrawingRectangle(margin, currentY, maxWidth, cardHeight);
+                g.FillRectangle(cardBg, cardRect);
+                g.DrawRectangle(borderPen, cardRect);
 
-            for (int i = 0; i < entries.Count; i++)
-            {
-                var score = scoreSelector(entries[i]);
-                if (score.HasValue)
-                {
-                    // Correct X positioning
-                    var x = chartArea.X + (entries.Count == 1 ? chartArea.Width / 2 :
-                           (i * chartArea.Width / Math.Max(1, entries.Count - 1)));
+                // Draw formatted note content (YYYY-MM-DD: note text)
+                var textRect = new DrawingRectangle(
+                    cardRect.X + CARD_PAD, cardRect.Y + CARD_PAD,
+                    layoutTextWidth, cardRect.Height - (CARD_PAD * 2));
 
-                    // Correct Y positioning with proper scaling
-                    var normalizedScore = (score.Value - minScore) / scoreRange;
-                    var y = chartArea.Bottom - (int)(normalizedScore * chartArea.Height);
+                g.DrawString(formattedNote, bodyFont, textBrush, textRect);
 
-                    points.Add(new DrawingPointF(x, y));
-                }
-            }
-
-            if (points.Count > 1)
-            {
-                // FIXED: Create new pen instead of modifying system pen
-                using (var linePen = new System.Drawing.Pen(color, 3))
-                {
-                    g.DrawLines(linePen, points.ToArray());
-                }
-            }
-
-            // Draw points with score labels
-            using (var brush = new SolidBrush(color))
-            using (var font = new DrawingFont("Arial", 8, DrawingFontStyle.Bold))
-            using (var whitePen = new System.Drawing.Pen(DrawingColor.White, 1))
-            using (var blackBrush = new SolidBrush(DrawingColor.Black))
-            {
-                for (int i = 0; i < points.Count; i++)
-                {
-                    var point = points[i];
-
-                    // Draw point
-                    g.FillEllipse(brush, point.X - 4, point.Y - 4, 8, 8);
-                    g.DrawEllipse(whitePen, point.X - 4, point.Y - 4, 8, 8);
-
-                    // Add score labels on points
-                    var scoreValue = scoreSelector(entries[GetEntryIndexForPoint(entries, i, scoreSelector)]);
-                    if (scoreValue.HasValue)
-                    {
-                        g.DrawString(scoreValue.Value.ToString(), font, blackBrush,
-                                   point.X - 8, point.Y - 20);
-                    }
-                }
+                currentY += cardHeight + CARD_GAP_Y;
+                notesShown++;
             }
         }
+
+
 
         // Helper method to get the correct entry index for a point
         private int GetEntryIndexForPoint(List<ScoreEntry> entries, int pointIndex, Func<ScoreEntry, int?> scoreSelector)
@@ -1791,10 +2493,10 @@ namespace PatientTrackerWPF
 
             try
             {
-                using var context = new AppDbContext();
+             
 
                 // Get all entries for this patient from DATABASE
-                var patientEntries = await context.ScoreEntries
+                var patientEntries = await _dbContext.ScoreEntries
                     .Where(e => e.PatientId == selectedPatientId)
                     .ToListAsync();
 
@@ -1836,8 +2538,8 @@ namespace PatientTrackerWPF
 
 
                 // DELETE FROM DATABASE
-                context.ScoreEntries.RemoveRange(patientEntries);
-                await context.SaveChangesAsync();
+                _dbContext.RemoveRange(patientEntries);
+                await _dbContext.SaveChangesAsync();
 
                 // Log the deletion
                 await _auditService.LogActionAsync("DELETE_PATIENT", selectedPatientId,
@@ -1919,27 +2621,30 @@ namespace PatientTrackerWPF
 
         private bool _handlingSelection;
 
+     
+
         private async void PatientSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_handlingSelection) return;          // ignore re-entrant calls
+            if (_handlingSelection) return;
             _handlingSelection = true;
             try
             {
-                if (PatientSelector.SelectedItem is not string id || id.Length == 0)
-                    return;
+                var id = PatientSelector.SelectedItem as string;
+                if (string.IsNullOrWhiteSpace(id))
+                    id = PatientSelector.Text?.Trim();
 
-                await LoadPatientDataFromDatabase(id);   // touches DB for *one* patient
+                if (string.IsNullOrWhiteSpace(id)) return;
+
+                await LoadPatientDataFromDatabase(id);
                 UpdateChartForPatient(id);
                 PatientIdBox.Text = id;
 
-                await RecalculateMetricsOnlyAsync();     // no DB, no Items.Clear()
-                UpdateCurrentPatientOutcome(id);         // refresh right-hand pane
+                await RecalculateMetricsOnlyAsync();
+                UpdateCurrentPatientOutcome(id);
             }
-            finally
-            {
-                _handlingSelection = false;
-            }
+            finally { _handlingSelection = false; }
         }
+
         private Task RecalculateMetricsOnlyAsync()
         {
             currentMetrics = metricsService.CalculateCombinedMetrics(patientData);
@@ -2016,9 +2721,10 @@ namespace PatientTrackerWPF
             try
             {
                 var entries = await _dbContext.ScoreEntries
-                    .Where(e => e.PatientId == patientId)
-                    .OrderBy(e => e.Date)
-                    .ToListAsync();
+     .AsNoTracking()
+     .Where(e => e.PatientId == patientId)
+     .OrderBy(e => e.Date)
+     .ToListAsync();
 
                 patientData[patientId] = entries;
                 ScoresGrid.ItemsSource = entries;
@@ -2070,15 +2776,17 @@ namespace PatientTrackerWPF
 
             try
             {
-                using var context = new AppDbContext();
+         
+
 
                 // FILTER FROM DATABASE instead of patientData dictionary
                 var filteredEntries = await _dbContext.ScoreEntries
-                    .Where(r => string.IsNullOrEmpty(filterId) ||
-                               r.PatientId.ToLower().Contains(filterId.ToLower()))
-                    .OrderBy(r => r.PatientId)
-                    .ThenBy(r => r.Date)
-                    .ToListAsync();
+      .AsNoTracking()
+      .Where(r => string.IsNullOrEmpty(filterId) ||
+                  r.PatientId.ToLower().Contains(filterId.ToLower()))
+      .OrderBy(r => r.PatientId)
+      .ThenBy(r => r.Date)
+      .ToListAsync();
 
                 ScoresGrid.ItemsSource = filteredEntries;
 
@@ -2340,14 +3048,15 @@ namespace PatientTrackerWPF
         {
             try
             {
-                using var context = new AppDbContext();
+           
 
                 // LOAD FROM DATABASE
                 var allEntries = await _dbContext.ScoreEntries
-                    .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId))
-                    .OrderBy(s => s.PatientId)
-                    .ThenBy(s => s.Date)
-                    .ToListAsync();
+     .AsNoTracking()
+     .Where(s => string.IsNullOrWhiteSpace(filterId) || s.PatientId.Contains(filterId))
+     .OrderBy(s => s.PatientId)
+     .ThenBy(s => s.Date)
+     .ToListAsync();
 
                 if (!allEntries.Any())
                 {

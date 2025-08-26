@@ -1,6 +1,6 @@
 ﻿using PatientTrackerWPF.Constants;
 using PatientTrackerWPF.Services;
-using PatientTrackerWPF.Utilities;
+
 using System;
 using System.Threading.Tasks;
 using System.Windows;
@@ -22,7 +22,7 @@ namespace PatientTrackerWPF
             _authService = authService;
 
             // Show researcher presentation information
-            ShowResearcherPresentationInfo();
+       /*     ShowResearcherPresentationInfo();*/
 
             // TEMPORARY: Generate fresh admin hash
             /*      _authService.GenerateAndTestAdminHash();*/
@@ -32,7 +32,7 @@ namespace PatientTrackerWPF
             UsernameTextBox.KeyDown += UsernameTextBox_KeyDown;
         }
 
-        private void ShowResearcherPresentationInfo()
+/*        private void ShowResearcherPresentationInfo()
         {
             var presentationInfo = ResearcherPresentationManager.GetResearcherPresentationInfo();
 
@@ -56,7 +56,7 @@ namespace PatientTrackerWPF
                 System.Diagnostics.Debug.WriteLine($"Error setting presentation info: {ex.Message}");
             }
         }
-
+*/
         private void UsernameTextBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
