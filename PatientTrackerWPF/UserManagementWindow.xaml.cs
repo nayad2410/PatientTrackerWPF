@@ -35,7 +35,9 @@ namespace PatientTrackerWPF
         {
             try
             {
-                _users = await _dbContext.Users
+                using var context = new AppDbContext(); // Use fresh context
+                _users = await context.Users
+                    .AsNoTracking() // ADD THIS LINE - prevents tracking conflicts
                     .OrderBy(u => u.Username)
                     .ToListAsync();
 
@@ -133,15 +135,11 @@ namespace PatientTrackerWPF
             }
 
             // Prevent deleting the last admin
-            if (user.Role == "Admin")
+            if (user.Role == "Admin" && _users.Count(u => u.Role == "Admin" && u.IsActive) <= 1)
             {
-                var adminCount = _users.Count(u => u.Role == "Admin" && u.IsActive);
-                if (adminCount <= 1)
-                {
-                    MessageBox.Show("Cannot delete the last administrator account.",
-                                   "Cannot Delete", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
+                MessageBox.Show("Cannot delete the last administrator account.",
+                               "Cannot Delete", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
 
             // Confirm deletion
@@ -159,9 +157,18 @@ namespace PatientTrackerWPF
             {
                 try
                 {
-                    // Remove user from database
-                    _dbContext.Users.Remove(user);
-                    await _dbContext.SaveChangesAsync();
+                    using var context = new AppDbContext(); // Fresh context - this is the key fix
+                    var userToDelete = await context.Users.FindAsync(user.Id);
+
+                    if (userToDelete == null)
+                    {
+                        MessageBox.Show("User not found in database.", "Error",
+                                       MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    context.Users.Remove(userToDelete);
+                    await context.SaveChangesAsync();
 
                     await _auditService.LogActionAsync("DELETE_USER", null,
                         $"Deleted user account: {user.Username}");
@@ -174,8 +181,8 @@ namespace PatientTrackerWPF
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error deleting user: {ex.Message}", "Error",
-                                   MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Error deleting user: {ex.Message}\n\nInner Exception: {ex.InnerException?.Message}",
+                                   "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -188,34 +195,31 @@ namespace PatientTrackerWPF
             if (user == null) return;
 
             var result = MessageBox.Show(
-                $"Reset password for user '{user.Username}'?\n\n" +
-                "The new password will be: Welcome123!\n\n" +
-                "The user will need to change this on next login.",
-                "Reset Password",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+                $"Reset password for user '{user.Username}'?\n\nThe new password will be: Welcome123!",
+                "Reset Password", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
             if (result == MessageBoxResult.Yes)
             {
                 try
                 {
-                    // Reset password
-                    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Welcome123!", workFactor: 12);
-                    user.UpdatedAt = DateTime.UtcNow;
+                    using var context = new AppDbContext(); // Fresh context
+                    var userToUpdate = await context.Users.FindAsync(user.Id);
 
-                    await _dbContext.SaveChangesAsync();
+                    if (userToUpdate != null)
+                    {
+                        userToUpdate.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Welcome123!", workFactor: 12);
+                        userToUpdate.UpdatedAt = DateTime.UtcNow;
 
-                    await _auditService.LogActionAsync("RESET_PASSWORD", null,
-                        $"Reset password for user: {user.Username}");
+                        await context.SaveChangesAsync();
 
-                    MessageBox.Show($"Password reset successfully for '{user.Username}'.\n\n" +
-                                   "New Password: Welcome123!",
-                                   "Password Reset", MessageBoxButton.OK, MessageBoxImage.Information);
+                        await _auditService.LogActionAsync("RESET_PASSWORD", null, $"Reset password for user: {user.Username}");
+
+                        MessageBox.Show($"Password reset successfully for '{user.Username}'.\nNew Password: Welcome123!", "Password Reset", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error resetting password: {ex.Message}", "Error",
-                                   MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }

@@ -109,6 +109,7 @@
                                    FontSize="12" Foreground="LightGray"
                                    HorizontalAlignment="Center"/>
                         </StackPanel>
+                        
 
 
                         <!-- Updated User Info with Logout Button -->
@@ -120,6 +121,13 @@
                                            FontSize="12" FontWeight="SemiBold"
                                            Foreground="White"/>
                                 </StackPanel>
+                                <Button Content="Change Password" Click="ChangePassword_Click"
+            Width="120" Height="35" Margin="0,0,10,0"
+            Background="#4A7C89" Foreground="White"
+            FontWeight="Bold" BorderThickness="0"/>
+
+                                <TextBlock Text="{Binding CurrentUser}" Foreground="White" 
+               VerticalAlignment="Center" Margin="0,0,10,0"/>
 
                                 <!-- Logout Button -->
                                 <Button x:Name="LogoutButton" 
@@ -321,7 +329,7 @@
                             <Button x:Name="UserManagementButton"
         Content="👥 Users"
         Width="85" Height="30"
-        Margin="3,15,0,0"
+        Margin="3"
         Click="UserManagement_Click"
         Visibility="Collapsed"
         Background="#2B5F75" Foreground="White"
@@ -383,7 +391,7 @@
                             <Button x:Name="DeletePatientButton"
                 Content="🗑️ Delete"
                 Width="85" Height="30"
-                Margin="3,15,0,0"
+                Margin="3"
                 Click="DeletePatient_Click"
                 Visibility="Collapsed"
                 Background="DarkRed" Foreground="White"

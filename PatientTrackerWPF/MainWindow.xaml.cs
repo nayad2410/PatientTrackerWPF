@@ -455,6 +455,19 @@ namespace PatientTrackerWPF
             };
         }
 
+
+        private void ChangePassword_Click(object sender, RoutedEventArgs e)
+        {
+            var authService = App.GetService<AuthenticationService>();
+            var changePasswordWindow = new ChangePasswordWindow(authService);
+            changePasswordWindow.Owner = this;
+
+            if (changePasswordWindow.ShowDialog() == true)
+            {
+                MessageBox.Show("Password changed successfully!", "Success",
+                               MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
         // ─── Initialize Chart ─────────────────────────────────────────────────
         private void InitializeChart()
         {
