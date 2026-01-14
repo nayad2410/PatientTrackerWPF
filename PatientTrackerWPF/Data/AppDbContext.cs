@@ -30,13 +30,16 @@ namespace PatientTrackerWPF.Data
         // ✅ FALLBACK CONSTRUCTOR - For design-time/migrations only
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
+            // design-time / tooling only
+
             System.Diagnostics.Debug.WriteLine($"🔧 AppDbContext created WITHOUT ICurrentUserService (design-time)");
         }
 
         // ✅ PARAMETERLESS CONSTRUCTOR - For design-time operations only
         public AppDbContext()
         {
-            System.Diagnostics.Debug.WriteLine($"🔧 AppDbContext created with parameterless constructor (design-time)");
+            System.Diagnostics.Debug.WriteLine($"🔧 AppDbContext created with parameterless constructor");
+
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)

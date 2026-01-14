@@ -15,7 +15,7 @@ namespace PatientTrackerWPF
     {
         private readonly AuthenticationService _authService;
         private readonly AuditService _auditService;
-        private readonly AppDbContext _dbContext;
+        //private readonly AppDbContext _dbContext;
         private List<User> _users = new List<User>();
 
         public UserManagementWindow(AuthenticationService authService, AuditService auditService, AppDbContext dbContext)
@@ -23,7 +23,7 @@ namespace PatientTrackerWPF
             InitializeComponent();
             _authService = authService;
             _auditService = auditService;
-            _dbContext = dbContext;
+            using var context = new AppDbContext();
 
             // Set default role
             RoleComboBox.SelectedIndex = 2; // Nurse by default

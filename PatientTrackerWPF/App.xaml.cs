@@ -49,7 +49,14 @@ namespace PatientTrackerWPF
                                                configuration.GetConnectionString("DefaultConnection") ??
                                                "Server=localhost;Database=ReconnectMentalHealth-db;Trusted_Connection=true;TrustServerCertificate=true;";
 
-                        options.UseSqlServer(connectionString);
+                        options.UseSqlServer(connectionString, sql =>
+                        {
+                            sql.EnableRetryOnFailure(
+                                maxRetryCount: 5,
+                                maxRetryDelay: TimeSpan.FromSeconds(10),
+                                errorNumbersToAdd: null);
+                        });
+
 
 #if DEBUG
                         options.EnableSensitiveDataLogging(true);

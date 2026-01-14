@@ -11,9 +11,7 @@ using PatientTrackerWPF.Data;
 using PatientTrackerWPF.Helper;
 using PatientTrackerWPF.Models;
 using PatientTrackerWPF.Services;
-
 using PdfSharp.Drawing;
-
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -58,6 +56,7 @@ using DrawingPointF = System.Drawing.PointF;
 using DrawingRectangle = System.Drawing.Rectangle;
 using Path = System.IO.Path;
 using Separator = LiveCharts.Wpf.Separator;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace PatientTrackerWPF
 {
@@ -231,7 +230,8 @@ namespace PatientTrackerWPF
         {
             try
             {
-                await using var db = new AppDbContext(); // short-lived, thread-safe for this call
+                using var scope = App.GetService<IServiceScopeFactory>().CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 await db.Database.CanConnectAsync();
             }
             catch (Exception ex)
@@ -574,9 +574,7 @@ namespace PatientTrackerWPF
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"Processing Patient ID: '{id}' | Edit Mode: {isInEditMode}");
-
-            // Validate score ranges
+            // Validate score ranges (keep your existing validation)
             var validationErrors = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(Phq9Box.Text))
@@ -620,29 +618,21 @@ namespace PatientTrackerWPF
             }
 
             var selectedDate = DatePicker.SelectedDate ?? DateTime.Today;
-            System.Diagnostics.Debug.WriteLine($"Selected Date: {selectedDate:yyyy-MM-dd}");
 
             try
             {
                 System.Diagnostics.Debug.WriteLine("DATABASE OPERATION START");
 
-                // Clear change tracker to avoid stale data
-                _dbContext.ChangeTracker.Clear();
-                System.Diagnostics.Debug.WriteLine("Change tracker cleared");
-
                 if (isInEditMode && editingEntry != null)
                 {
-                    // EDIT MODE: Update the specific existing record by ID
-                    System.Diagnostics.Debug.WriteLine($"EDIT MODE: Updating existing entry ID {editingEntry.Id}");
+                    // ✅ EDIT MODE - Use fresh context
+                    var context = _dbContext;
 
-                    var existingEntry = await _dbContext.ScoreEntries
+                    var existingEntry = await context.ScoreEntries
                         .FirstOrDefaultAsync(e => e.Id == editingEntry.Id);
 
                     if (existingEntry != null)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Found existing entry for update: ID {existingEntry.Id}");
-
-                        // Update the existing entry
                         existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
                         existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
                         existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
@@ -650,11 +640,7 @@ namespace PatientTrackerWPF
                         existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
                         existingEntry.Note = NoteBox.Text.Trim();
 
-                        // Mark as modified
-                        var entityEntry = _dbContext.Entry(existingEntry);
-                        entityEntry.State = EntityState.Modified;
-
-                        System.Diagnostics.Debug.WriteLine($"Entity marked as Modified, State: {entityEntry.State}");
+                        await context.SaveChangesAsync();
                     }
                     else
                     {
@@ -666,18 +652,14 @@ namespace PatientTrackerWPF
                 }
                 else
                 {
-                    // NORMAL MODE: Check for existing entry with FRESH query
-                    var existingEntry = await _dbContext.ScoreEntries
-                        .FirstOrDefaultAsync(e => e.PatientId == id && e.Date.Date == selectedDate.Date);
+                    // ✅ NORMAL MODE - Use fresh context
+                    using var context = new AppDbContext();
 
-                    System.Diagnostics.Debug.WriteLine("NORMAL MODE: Add/Update Logic");
-                    System.Diagnostics.Debug.WriteLine($"Looking for Patient: '{id}', Date: {selectedDate.Date:yyyy-MM-dd}");
-                    System.Diagnostics.Debug.WriteLine($"existingEntry found: {existingEntry != null}");
+                    var existingEntry = await context.ScoreEntries
+                        .FirstOrDefaultAsync(e => e.PatientId == id && e.Date.Date == selectedDate.Date);
 
                     if (existingEntry != null)
                     {
-                        System.Diagnostics.Debug.WriteLine("UPDATING EXISTING ENTRY");
-
                         // Confirm with user
                         var result = MessageBox.Show(
                             $"⚠️ DUPLICATE ENTRY DETECTED\n\n" +
@@ -690,30 +672,18 @@ namespace PatientTrackerWPF
                             MessageBoxImage.Question);
 
                         if (result == MessageBoxResult.No)
-                        {
-                            System.Diagnostics.Debug.WriteLine("User chose NOT to update existing entry");
                             return;
-                        }
 
-                        // Update existing entry
                         existingEntry.PHQ9 = TryParseOrNull(Phq9Box.Text);
                         existingEntry.GAD7 = TryParseOrNull(Gad7Box.Text);
                         existingEntry.BDI2 = TryParseOrNull(Bdi2Box.Text);
                         existingEntry.PCL5 = TryParseOrNull(PCL5Total.Text);
                         existingEntry.YBOCS = TryParseOrNull(YBOCS.Text);
                         existingEntry.Note = NoteBox.Text.Trim();
-
-                        // Mark as modified
-                        var entityEntry = _dbContext.Entry(existingEntry);
-                        entityEntry.State = EntityState.Modified;
-
-                        System.Diagnostics.Debug.WriteLine($"Entity State: {entityEntry.State}");
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine("CREATING NEW ENTRY");
-
-                        // Create new entity
+                        // Create new entry
                         var newEntry = new ScoreEntry
                         {
                             PatientId = id,
@@ -726,47 +696,44 @@ namespace PatientTrackerWPF
                             Date = selectedDate
                         };
 
-                        _dbContext.ScoreEntries.Add(newEntry);
-                        System.Diagnostics.Debug.WriteLine($"Added new entity for patient {id}");
+                        context.ScoreEntries.Add(newEntry);
                     }
-                }
 
-                // Save changes (UpdateAuditFields will be called automatically)
-                System.Diagnostics.Debug.WriteLine("CALLING SaveChangesAsync");
-                var changeCount = await _dbContext.SaveChangesAsync();
-                System.Diagnostics.Debug.WriteLine($"SaveChanges returned: {changeCount} changes");
+                    var changeCount = await context.SaveChangesAsync();
 
-                // Log the action
-                string action = isInEditMode ? "UPDATE_SCORE" : "CREATE_SCORE";
-                await _auditService.LogActionAsync(action, id, $"Saved scores for patient {id}");
+                    // Log the action
+                    string action = isInEditMode ? "UPDATE_SCORE" : "CREATE_SCORE";
+                    await _auditService.LogActionAsync(action, id, $"Saved scores for patient {id}");
 
-                // At the very end, after successful save:
-                if (changeCount > 0)  // If data was saved successfully
-                {
-                    lastDataModification = DateTime.Now;  // Mark data as changed
-
-                    // Auto-recalculate if this patient is currently selected
-                    if (PatientSelector.SelectedItem?.ToString() == id)
+                    if (changeCount > 0)
                     {
-                        await RecalculateAndRefreshAsync(id);
+                        lastDataModification = DateTime.Now;
                     }
                 }
 
-                // Reset edit mode if we were editing
+                // Reset edit mode if needed
                 if (isInEditMode)
                 {
                     ResetEditMode();
                 }
 
-                // Refresh UI
+                // ✅ Refresh UI - this reloads all patients from database
                 await LoadAllPatientsFromDatabase();
 
-                // Update patient selector if needed
-                if (!PatientSelector.Items.Contains(id))
-                {
-                    PatientSelector.Items.Add(id);
-                }
+                // ✅ Clear current selection first to ensure SelectionChanged event fires properly
+                _handlingSelection = true;
+                PatientSelector.SelectedItem = null;
+                _handlingSelection = false;
+
+                // ✅ Set the selection to the new/updated patient
                 PatientSelector.SelectedItem = id;
+
+                // ✅ Manually load and display the patient's data
+                await LoadPatientDataFromDatabase(id);
+                UpdateChartForPatient(id);
+
+                // ✅ Recalculate metrics for this patient
+                await RecalculateAndRefreshAsync(id);
 
                 // Clear input fields
                 ClearInputFields();
@@ -781,10 +748,8 @@ namespace PatientTrackerWPF
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"ERROR in AddScore_Click");
-                System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"ERROR in AddScore_Click: {ex.Message}");
 
-                // Reset edit mode on error
                 if (isInEditMode)
                 {
                     ResetEditMode();
@@ -822,12 +787,14 @@ namespace PatientTrackerWPF
             {
                 System.Diagnostics.Debug.WriteLine("🔍 Starting LoadAllPatientsFromDatabase...");
 
-                var allEntries = await _dbContext.ScoreEntries
-              .AsNoTracking()
-              .OrderBy(e => e.PatientId)
-              .ThenBy(e => e.Date)
-              .ToListAsync();
+                // ✅ Use fresh context
+                using var context = new AppDbContext();
 
+                var allEntries = await context.ScoreEntries
+                    .AsNoTracking()
+                    .OrderBy(e => e.PatientId)
+                    .ThenBy(e => e.Date)
+                    .ToListAsync();
 
                 System.Diagnostics.Debug.WriteLine($"🔍 Found {allEntries.Count} total entries in database");
 
@@ -844,12 +811,10 @@ namespace PatientTrackerWPF
                     PatientSelector.Items.Add(patientId);
                 }
 
-                // ✅ ADD THIS - Update the main grid
                 ScoresGrid.ItemsSource = allEntries;
 
                 System.Diagnostics.Debug.WriteLine($"✅ Loaded {patientData.Keys.Count} patients from database");
 
-                // Show warning if no data
                 if (!allEntries.Any())
                 {
                     MessageBox.Show("⚠️ No data found in database.\nCheck connection string and ensure data exists.",
@@ -3741,7 +3706,7 @@ namespace PatientTrackerWPF
                 try
                 {
                     // DELETE FROM DATABASE
-                    using var context = new AppDbContext();
+                    var context = _dbContext;
                     var dbEntry = await context.ScoreEntries
                         .FirstOrDefaultAsync(e => e.PatientId == selected.PatientId &&
                                            e.Date.Date == selected.Date.Date);
@@ -3784,8 +3749,8 @@ namespace PatientTrackerWPF
                         {
                             // Refresh all data view
                             await LoadAllPatientsFromDatabase();
-                            using var context2 = new AppDbContext();
-                            var allEntries = await context2.ScoreEntries
+                            var db = _dbContext;
+                            var allEntries = await _dbContext.ScoreEntries
                                 .OrderBy(r => r.PatientId)
                                 .ThenBy(r => r.Date)
                                 .ToListAsync();
